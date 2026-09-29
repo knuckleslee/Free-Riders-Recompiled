@@ -60,6 +60,9 @@ $settings = @{
     'held'         = @{ SFR_PARALLEL_HELD = '1' }
     # the main thread spins up to 1 ms for its turn at the permit before it sleeps
     'main-spin'    = @{ SFR_MAIN_SPIN_US = '1000' }
+    # ordinary stores check the title's reservation and pending reads again,
+    # as before (baseline skips them: GuestMemory::strict_stores)
+    'strict-memory' = @{ SFR_STRICT_MEMORY = '1' }
     # samples the main thread every millisecond during the race (from present
     # 12200); profile.md names the functions (scripts/profile_summary.py)
     'profile'      = @{ SFR_MAIN_PROFILE = '1'; SFR_PROFILE_AFTER = '12200' }

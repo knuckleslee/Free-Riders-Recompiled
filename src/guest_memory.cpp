@@ -861,7 +861,7 @@ void GuestMemory::check_write(uint64_t address, uint64_t size) const {
 bool GuestMemory::zero_fast(uint32_t address, uint32_t size) {
     // The whole block lies in one fast page (blocks are aligned and smaller).
     const uint8_t page = fast_page(address, size);
-    if (!(page & fast_access) || has_reservation() || page_pinned(address)) return false;
+    if (!(page & fast_access) || (strict_stores && (has_reservation() || page_pinned(address)))) return false;
     std::fill_n(base_ + address, size, uint8_t{0});
     if (page & fast_watched) note_watched_write(address / fast_page_size);
     return true;

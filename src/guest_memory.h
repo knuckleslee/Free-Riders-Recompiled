@@ -111,6 +111,15 @@ public:
     uint64_t load_reserved_doubleword(uint64_t address);
     bool store_conditional_doubleword(uint64_t address, uint64_t value);
     bool has_reservation() const { return guest_reservation.owner == reservation_owner_; }
+    // Whether the fast path of an ordinary store also stops the title for a
+    // store made while this thread holds a reservation, or into a range a
+    // pending read will write. Both are checks against a title's bug, never
+    // needed for correctness: a conditional store still fails if the
+    // reserved word changed (compare-and-swap under its stripe's version).
+    // Every store paid a thread-local read and an atomic one for them, so
+    // the game turns them off (SFR_STRICT_MEMORY=1 keeps them); checked
+    // stores (check_write, write_bytes, ...) keep them always.
+    static inline bool strict_stores = true;
     // The layout (regions, import variables, computed words, pending I/O)
     // changes only under exclusive guest execution. A thread that runs guest
     // code without it (a detached guest) sets concurrent_reader: its checks
@@ -153,7 +162,7 @@ public:
     }
     uint8_t* fast_write(uint64_t address, uint64_t size) {
         const uint8_t page = fast_page(address, size);
-        if (!(page & fast_access) || has_reservation() || page_pinned(address)) return nullptr;
+        if (!(page & fast_access) || (strict_stores && (has_reservation() || page_pinned(address)))) return nullptr;
         if (page & fast_watched) note_watched_write(address / fast_page_size);
         return base_ + address;
     }
@@ -176,7 +185,7 @@ public:
     template<typename T> __attribute__((always_inline)) void store(uint64_t address, T value) {
         static_assert(std::is_unsigned_v<T>);
         const uint8_t page = fast_page(address, sizeof(T));
-        if ((page & fast_access) && !has_reservation() && !page_pinned(address)) [[likely]] {
+        if ((page & fast_access) && (!strict_stores || (!has_reservation() && !page_pinned(address)))) [[likely]] {
             *reinterpret_cast<volatile T*>(base_ + address) = byte_swap(value);
             if (page & fast_watched) [[unlikely]] note_watched_write(address / fast_page_size);
             return;

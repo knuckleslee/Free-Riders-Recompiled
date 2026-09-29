@@ -527,6 +527,33 @@ static void mixed_width_reservations_are_explicit() {
             "doubleword reservation remains usable after address rejection");
 }
 
+// SFR_STRICT_MEMORY off (the game's default): an ordinary store neither
+// checks this thread's reservation nor pending output ranges, and a
+// conditional store still fails once its word has changed.
+static void relaxed_stores_keep_conditional_stores_correct() {
+    struct Restore { ~Restore() { sfr::GuestMemory::strict_stores = true; } } restore;
+    sfr::GuestMemory::strict_stores = false;
+    sfr::GuestMemory memory;
+    memory.map(0x10000, 0x2000);
+    memory.load_reserved_word(0x10000);
+    memory.store<uint32_t>(0x10008, 5);
+    require(memory.load<uint32_t>(0x10008) == 5 && memory.has_reservation(),
+            "a disjoint ordinary store lands and keeps the reservation");
+    require(memory.store_conditional_word(0x10000, 7) && memory.load<uint32_t>(0x10000) == 7,
+            "the conditional store after it succeeds");
+    memory.load_reserved_word(0x10000);
+    memory.store<uint32_t>(0x10000, 8);
+    require(!memory.store_conditional_word(0x10000, 9) && memory.load<uint32_t>(0x10000) == 8,
+            "a conditional store fails once an ordinary store changed its word");
+    memory.load_reserved_word(0x10000);
+    require_stop([&] { memory.check_write(0x10010, 4); }, "reservation-interference",
+                 "checked writes keep the interference check");
+    require(memory.store_conditional_word(0x10000, 1), "the reservation survives the checked write's stop");
+    auto pending = memory.pin_writes(std::array{sfr::GuestMemory::Range{0x11000, 8}});
+    memory.store<uint32_t>(0x11004, 3);
+    require(memory.load<uint32_t>(0x11004) == 3, "an ordinary store into a pending output lands");
+}
+
 static void doubleword_reservation_interference() {
     sfr::GuestMemory memory;
     memory.map(0x10000, 24);
@@ -1415,6 +1442,7 @@ int main() {
                           doubleword_reservation_increment_and_consumption,
                           doubleword_reservation_changed_backing, doubleword_reservation_validation,
                           mixed_width_reservations_are_explicit, doubleword_reservation_interference,
+                          relaxed_stores_keep_conditional_stores_correct,
                           memory_accounting_ranges_and_guards,
                           memory_accounting_budget_failures_are_transactional,
                           memory_accounting_invalid_budgets, write_combined_mapping,
