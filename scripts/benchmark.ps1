@@ -55,6 +55,9 @@ $settings = @{
     'no-vertex-cache' = @{ SFR_VERTEX_CACHE = '0' }
     'no-gpu-pipeline' = @{ SFR_GPU_PIPELINE = '0' }
     'vulkan'       = @{ SFR_GRAPHICS = 'vulkan' }
+    # baseline, reporting why detached guests come back to the global permit
+    # and how long they hold it (PARALLEL_HELD, summed in summary.md)
+    'held'         = @{ SFR_PARALLEL_HELD = '1' }
 }
 # "a,b" arrives as one string through powershell -File.
 $Configs = @($Configs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
@@ -78,7 +81,9 @@ $base = [ordered]@{
 $cleared = @('SFR_CAMERA', 'SFR_VOICE', 'SFR_INPUT_SCRIPT', 'SFR_INPUT_SCRIPT_2', 'SFR_GRAPHICS', 'SFR_HOST_PROCESSORS',
              'SFR_SKIP_DRAWS', 'SFR_SCREENSHOT', 'SFR_SCREENSHOT_EVERY', 'SFR_SAMPLE_PROFILE', 'SFR_HOST_PROFILE',
              'SFR_MAIN_PROFILE', 'SFR_AVATAR_MODEL', 'SFR_TWO_PLAYERS', 'SFR_PLAYER2_INPUT')
-$touched = @($base.Keys) + $cleared + @($settings.Values | ForEach-Object { $_.Keys })
+# Every setting's switch too, so one run's never carries into the next.
+$cleared = @($cleared + @($settings.Values | ForEach-Object { $_.Keys }) | Sort-Object -Unique)
+$touched = @($base.Keys) + $cleared
 $saved = @{}
 foreach ($name in ($touched | Sort-Object -Unique)) { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
 

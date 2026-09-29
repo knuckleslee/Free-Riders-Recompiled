@@ -55,6 +55,7 @@ cd C:\Users\<你>\Documents\free-riders-recompiled
 | `no-vertex-cache` | `SFR_VERTEX_CACHE=0` | 跨幀頂點快取的效果 |
 | `no-gpu-pipeline` | `SFR_GPU_PIPELINE=0` | GPU 晚一格的效果 |
 | `vulkan` | `SFR_GRAPHICS=vulkan` | Vulkan 對 Direct3D 12 |
+| `held` | `SFR_PARALLEL_HELD=1` | 哪些 import／hook 讓脫離的客體執行緒回到全域許可、每格持有多久（`summary.md` 最後一張表） |
 
 ## 怎麼走到比賽
 

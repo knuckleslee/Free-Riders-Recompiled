@@ -63,6 +63,18 @@ class BenchmarkSummaryTest(unittest.TestCase):
             self.assertIn('| warmup | 1 | 20.0', runs)
             self.assertNotIn('warmup', comparison)
 
+    def test_sums_what_held_the_permit_during_the_race_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            held = ('PARALLEL_HELD guest=37 hook=0x824a3398 count=10 ms=4.5\n'
+                    'PARALLEL_HELD guest=16 import=0x82acc5ec name=XNotifyGetNext count=20 ms=1.5\n')
+            lines = [present(0, 0.016, 0), held, present(1, 0.032, 0)]  # the menu: not counted
+            lines += [present(2 + i, 0.05 + i * 0.04, 1) for i in range(4)] + [held]
+            (Path(directory) / 'held-1.log').write_text(''.join(lines), encoding='utf-8')
+            table = bench.held_table(directory)
+            self.assertIn('| 37 | hook | 0x824a3398 |  | 2.50 | 1.125 |', table)
+            self.assertIn('| 16 | import | 0x82acc5ec | XNotifyGetNext | 5.00 | 0.375 |', table)
+            self.assertLess(table.index('| 37 |'), table.index('| 16 |'))
+
 
 if __name__ == '__main__':
     unittest.main()

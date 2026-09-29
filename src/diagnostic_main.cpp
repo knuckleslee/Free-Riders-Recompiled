@@ -64,6 +64,7 @@
 #include <fstream>
 #include <iostream>
 #include <condition_variable>
+#include <cstring>
 #include <deque>
 #include <map>
 #include <mutex>
@@ -416,12 +417,69 @@ static constexpr uint32_t parallel_worker_entry = 0x8222E008;
 //                          next function entry.
 static void refresh_entry_observation();
 static std::atomic<uint64_t> parallel_attaches[3]{};  // import, hook, memory
-static void parallel_attached(int reason) {
+// SFR_PARALLEL_HELD=1: how long each detached guest holds the global permit
+// once back on it, and why (the import, hook or page that brought it back).
+// While it does, the main thread queues behind it (main_queued_ms), so the
+// top of this list is what to make permit-free next. Every five seconds,
+// the ten reasons held longest since the last report.
+static const bool parallel_held_report = [] {
+    const char* const text = std::getenv("SFR_PARALLEL_HELD");
+    return text && *text && *text != '0';
+}();
+struct ParallelHold { const char* name = nullptr; uint64_t count = 0, ns = 0; };
+static thread_local struct {
+    bool open = false;
+    int reason = 0;
+    uint32_t address = 0;
+    const char* name = nullptr;
+    std::chrono::steady_clock::time_point since;
+} parallel_hold;
+
+static void parallel_attached(int reason, uint32_t address = 0, const char* name = nullptr) {
     parallel_attaches[reason].fetch_add(1, std::memory_order_relaxed);
     static thread_local uint64_t count = 0;
     if (++count % 20000 == 0)
         std::cerr << "PARALLEL_STATS imports=" << parallel_attaches[0] << " hooks=" << parallel_attaches[1]
                   << " memory=" << parallel_attaches[2] << char(10);
+    if (parallel_held_report)
+        parallel_hold = {true, reason, address, name, std::chrono::steady_clock::now()};
+}
+
+// Every detach of a detached guest that came back to the permit goes
+// through here, so its hold is counted.
+static void parallel_detach() {
+    if (parallel_held_report && parallel_hold.open) {
+        parallel_hold.open = false;
+        const auto now = std::chrono::steady_clock::now();
+        const uint64_t ns = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(now - parallel_hold.since).count());
+        static std::mutex lock;
+        static std::unordered_map<uint64_t, ParallelHold> held;
+        static auto reported = now;
+        std::lock_guard guard(lock);
+        ParallelHold& entry = held[(uint64_t(current_id) << 40) | (uint64_t(parallel_hold.reason) << 32) | parallel_hold.address];
+        if (parallel_hold.name) entry.name = parallel_hold.name;
+        ++entry.count;
+        entry.ns += ns;
+        if (now - reported >= std::chrono::seconds(5)) {
+            std::vector<std::pair<uint64_t, uint64_t>> top;
+            for (const auto& [key, value] : held) top.push_back({value.ns, key});
+            std::sort(top.rbegin(), top.rend());
+            static const char* const kinds[] = {"import", "hook", "memory"};
+            for (size_t i = 0; i < top.size() && i < 10; ++i) {
+                const uint64_t key = top[i].second;
+                const ParallelHold& value = held[key];
+                std::cerr << "PARALLEL_HELD guest=" << (key >> 40) << ' ' << kinds[(key >> 32) & 0xFF] << "=0x"
+                          << std::hex << uint32_t(key) << std::dec;
+                // Import names are the table's "__imp__" symbols.
+                if (value.name) std::cerr << " name=" << (std::strncmp(value.name, "__imp__", 7) ? value.name : value.name + 7);
+                std::cerr << " count=" << value.count << " ms=" << double(value.ns) / 1e6 << char(10);
+            }
+            std::cerr << "PARALLEL_HELD_END seconds=" << std::chrono::duration<double>(now - reported).count() << char(10);
+            held.clear();
+            reported = now;
+        }
+    }
+    execution_permit->detach();
 }
 
 // Called only by the completion/suspend pair in worker 824C39C8. Reserve
@@ -430,13 +488,13 @@ void prepare_worker_self_suspend() {
     const bool detached = execution_permit->detached();
     if (detached) {
         execution_permit->attach();
-        parallel_attached(0);
+        parallel_attached(0, 0x824C39C8);
     }
     const uint32_t own = guest_threads->handle_for_object(current_thread);
     const auto result = guest_threads->prepare_self_suspend(own);
     if (result.status)
         throw RuntimeStop("thread-suspend", own, "could not prepare worker completion suspension");
-    if (detached) execution_permit->detach();
+    if (detached) parallel_detach();
 }
 
 static void parallel_slow_access(uint64_t address) {
@@ -450,7 +508,7 @@ static void parallel_slow_access(uint64_t address) {
                       << std::dec << " count=" << count << " function=" << guest_entry.current_function << char(10);
     }
     execution_permit->attach();
-    parallel_attached(2);
+    parallel_attached(2, uint32_t(address & ~uint64_t(0xFFF)));
     guest_entry.detach_at_entry = true;
 }
 
@@ -458,18 +516,18 @@ static void parallel_function_entry(const PPCContext& ctx, uint32_t address) {
     if (execution_permit->detached()) {
         if (!is_hook(address)) return;
         execution_permit->attach();
-        parallel_attached(1);
+        parallel_attached(1, address);
         guest_entry.hook_stack_pointer = ctx.r1.u32;
     } else if (guest_entry.hook_stack_pointer) {
         if (is_hook(address)) guest_entry.hook_stack_pointer = (std::max)(guest_entry.hook_stack_pointer, ctx.r1.u32);
         else if (ctx.r1.u32 > guest_entry.hook_stack_pointer) {
             guest_entry.hook_stack_pointer = 0;
-            execution_permit->detach();
+            parallel_detach();
         }
     } else if (guest_entry.detach_at_entry) {
         guest_entry.detach_at_entry = false;
         if (is_hook(address)) guest_entry.hook_stack_pointer = ctx.r1.u32;
-        else execution_permit->detach();
+        else parallel_detach();
     }
 }
 
@@ -913,7 +971,7 @@ void dispatch_import(PPCContext& ctx, const char* name, uint32_t address) {
         (address == 0x82ACB63C && !GuestThreads::is_handle_range(ctx.r3.u32));  // NtWaitForSingleObjectEx
     if (!permit_free) {
         execution_permit->attach();
-        parallel_attached(0);
+        parallel_attached(0, address, name);
         // Holding the permit: which imports bring detached guests back to it.
         static std::unordered_map<const char*, uint64_t> by_import;
         static uint64_t attaches = 0;
@@ -928,7 +986,7 @@ void dispatch_import(PPCContext& ctx, const char* name, uint32_t address) {
         }
     }
     dispatch_import_owned(ctx, name, address);
-    if (!execution_permit->detached() && !guest_entry.hook_stack_pointer && !guest_entry.detach_at_entry) execution_permit->detach();
+    if (!execution_permit->detached() && !guest_entry.hook_stack_pointer && !guest_entry.detach_at_entry) parallel_detach();
 }
 // Completes an XOVERLAPPED at once: InternalLow = result, InternalHigh =
 // length, extended error 0, then its event (if any) is set. Returns
@@ -1624,7 +1682,7 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
                 if (global_wait && present_count.load(std::memory_order_relaxed) >= global_wait_after &&
                         execution_permit->detached()) {
                     execution_permit->attach();
-                    parallel_attached(0);
+                    parallel_attached(0, 0x82ACB4AC, "RtlEnterCriticalSection");
                 }
                 block_guest([&](std::stop_token stop) {
                     ready = pending->wait(stop);

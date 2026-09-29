@@ -62,6 +62,51 @@ def read_run(path, skip):
     return frames, racing_seen, ended
 
 
+HELD = re.compile(r'^PARALLEL_HELD guest=(\d+) (import|hook|memory)=(0x[0-9a-f]+)(?: name=(\S+))? count=(\d+) ms=([\d.]+)')
+
+
+def read_held(path):
+    """What brought detached guests back to the global permit during the
+    race (SFR_PARALLEL_HELD=1): {(guest, kind, address, name): [count, ms]},
+    and the race frames the reports cover."""
+    held, racing, frames = {}, False, 0
+    with open(path, encoding='utf-8', errors='replace') as log:
+        for line in log:
+            if line.startswith('NATIVE_PRESENT'):
+                racing = ' racing=1 ' in line
+                frames += racing
+                continue
+            match = HELD.match(line)
+            if not match or not racing:
+                continue
+            guest, kind, address, name, count, ms = match.groups()
+            entry = held.setdefault((int(guest), kind, address, name or ''), [0, 0.0])
+            entry[0] += int(count)
+            entry[1] += float(ms)
+    return held, frames
+
+
+def held_table(directory, top=15):
+    """The reasons held longest, per race frame, over every run that reported them."""
+    total, frames = {}, 0
+    for log in sorted(Path(directory).glob('*.log')):
+        held, race_frames = read_held(log)
+        if not held:
+            continue
+        frames += race_frames
+        for key, (count, ms) in held.items():
+            entry = total.setdefault(key, [0, 0.0])
+            entry[0] += count
+            entry[1] += ms
+    if not total:
+        return ''
+    lines = ['回到全域許可的原因（比賽中，每格平均）：', '',
+             '| 客體 | 種類 | 位址 | 名稱 | 每格次數 | 每格持有 ms |', '| ---: | --- | --- | --- | ---: | ---: |']
+    for (guest, kind, address, name), (count, ms) in sorted(total.items(), key=lambda item: -item[1][1])[:top]:
+        lines.append(f'| {guest} | {kind} | {address} | {name} | {count / frames:.2f} | {ms / frames:.3f} |')
+    return '\n'.join(lines)
+
+
 def percentile(values, fraction):
     ordered = sorted(values)
     return ordered[min(len(ordered) - 1, int(fraction * len(ordered)))]
@@ -113,6 +158,9 @@ def summarise(directory, skip):
             lines.append(f'| {config} | {repeat} | ' +
                          ' | '.join(fmt.format(stats[key]) for key, _, fmt in COLUMNS) + f' | {ended} |')
     lines += ['', compare(rows)]
+    held = held_table(directory)
+    if held:
+        lines += ['', held]
     return '\n'.join(lines), rows
 
 
