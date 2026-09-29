@@ -103,9 +103,21 @@ $save_source = Join-Path $host_dir 'save'
 $cpu = try { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name } catch { 'unknown' }
 $gpu = try { (Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join '; ' } catch { 'unknown' }
 $commit = (& git -C $root rev-parse --short HEAD 2>$null)
-@("commit=$commit", "cpu=$cpu", "gpu=$gpu", "os=$([Environment]::OSVersion.VersionString)",
+# Which generated code the build compiled (scripts/localize_registers.py
+# writes a localized copy beside the original).
+$generated = ''
+$cache = Join-Path $host_dir 'CMakeCache.txt'
+if (Test-Path -LiteralPath $cache) {
+    $line = Select-String -LiteralPath $cache -Pattern '^SFR_DIAGNOSTIC_DIR:[A-Z]+=(.*)$' | Select-Object -First 1
+    if ($line) { $generated = $line.Matches[0].Groups[1].Value }
+}
+@("commit=$commit", "generated=$generated", "cpu=$cpu", "gpu=$gpu", "os=$([Environment]::OSVersion.VersionString)",
   "configs=$($Configs -join ',') repeats=$Repeats present_limit=$PresentLimit capped=$([bool]$Capped)",
   "say=$Say") | Set-Content -LiteralPath (Join-Path $Out 'info.txt') -Encoding UTF8
+
+if ($generated -and (Test-Path -LiteralPath (Join-Path $generated 'localize_report.json'))) {
+    Copy-Item -LiteralPath (Join-Path $generated 'localize_report.json') -Destination $Out
+}
 
 $runs = New-Object System.Collections.Generic.List[object]
 if (-not $NoWarmup) { $runs.Add(@('warmup', 1)) }
