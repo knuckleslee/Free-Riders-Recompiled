@@ -552,6 +552,20 @@ static void relaxed_stores_keep_conditional_stores_correct() {
     auto pending = memory.pin_writes(std::array{sfr::GuestMemory::Range{0x11000, 8}});
     memory.store<uint32_t>(0x11004, 3);
     require(memory.load<uint32_t>(0x11004) == 3, "an ordinary store into a pending output lands");
+    // Reserved accesses skip the layout search only on fast pages: a page
+    // holding a computed word still refuses them.
+    sfr::GuestMemory computed;
+    computed.map(0x20000, 0x2000);
+    computed.add_read_only_word(0x20010, [] { return 1u; });
+    require_stop([&] { computed.load_reserved_word(0x20010); }, "memory-readonly",
+                 "a reserved load of a computed word still stops");
+    require_stop([&] { computed.store_conditional_word(0x20010, 2); }, "memory-readonly",
+                 "a conditional store to a computed word still stops");
+    computed.store<uint32_t>(0x21000, 4);
+    require(computed.load_reserved_word(0x21000) == 4 && computed.store_conditional_word(0x21000, 6) &&
+            computed.load<uint32_t>(0x21000) == 6, "a reserved pair on a fast page works");
+    require(computed.load_reserved_doubleword(0x21008) == 0 && computed.store_conditional_doubleword(0x21008, 9) &&
+            computed.load<uint64_t>(0x21008) == 9, "a reserved doubleword pair on a fast page works");
 }
 
 static void doubleword_reservation_interference() {

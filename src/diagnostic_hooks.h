@@ -55,7 +55,7 @@ void guest_checkpoint_permit();
 // times a second, and that resolver was 9.5% of a race on the phone. One
 // object is one resolution; the fields are offsets from it.
 struct GuestEntryState {
-    // The permit needs one checkpoint in every few dozen (guest_checkpoint).
+    // The permit needs one checkpoint in every few hundred (guest_checkpoint).
     uint32_t checkpoint_countdown = 0;
     // The function this thread entered last (named when it stops).
     const char* current_function = "";

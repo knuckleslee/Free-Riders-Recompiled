@@ -171,3 +171,62 @@ import 裡等待（`NtSuspendThread` 自我暫停、等臨界區段），等待�
   `NtReadFile`、客體 11 在骨架 hook（`827707B0`）。全部改成不必拿許可也省不到 1 ms。
 
 下一步試 `main-spin`：主執行緒排隊時先原地等待，不必等主機把它重新排上 CPU。
+
+## 2026-09-30：主執行緒剖析（commit `f11bb30`）與第一批改動
+
+`profile` 兩趟，比賽中取樣 13 萬次：
+
+| 類別 | 比例 |
+| --- | ---: |
+| 執行檔以外（等待、顯示卡驅動、系統） | 34.2% |
+| 遊戲生成碼 | 33.8% |
+| 畫圖 | 14.5% |
+| 客體記憶體存取（檢查過的路徑） | 6.5% |
+| HLE 與診斷 | 5.4% |
+| C 執行階段（多半是 memcpy） | 4.4% |
+| 執行許可與排程 | 1.2% |
+
+最熱的主機端函式：`native_draw` 2.9%、`sub_824F56E8`（索引繪製 hook）1.8%、`load_vector_left` 1.6%、
+`check_store_access` 1.4%、`call_indirect` 1.2%、`store_vector_memory` 1.1%、`NativeRenderer::texture` 1.1%、
+`GuestMemory::check` 1.1%、`guest_checkpoint_permit` 1.0%；生成碼裡 `__savegprlr_*`／`__restgprlr_*` 合計約 2.6%。
+`main-spin` 沒有效果（−1%），維持關閉。
+
+依此做的改動（同一個建置一起量）：
+
+1. **寫入路徑不檢查除錯用的條件**（A1，`GuestMemory::strict_stores`，`SFR_STRICT_MEMORY=1` 還原）。
+2. **部分向量讀寫**（`lvlx`、`lvrx`、`stvlx`、`stvrx`）在快速頁面上一次完成，不再先做完整檢查再逐位元組處理。
+3. **原子操作**（`lwarx`／`stwcx.` 與 64 位元版本）在快速頁面上不做 `check_store_access` 的版面搜尋。
+4. **連續繪製沿用上一次的 pipeline**：鍵相同就不雜湊、不查表。
+5. **間接呼叫查平坦的表**（以 `(位址 - PPC_CODE_BASE) / 4` 為索引），不查 `unordered_map`。
+6. **檢查點每 256 次才呼叫許可**（原本 32 次）；許可自己每 64 次呼叫才看一次時間，仍遠在 2 ms 配額之內。
+7. **PowerPC 暫存器改成區域變數**（`scripts/localize_registers.py`）：見下。
+
+### 暫存器區域變數
+
+XenonRecomp 能把 CR、CTR、XER、保留值，以及呼叫之間不必保留的（r0、r2、r11、r12、f0、v32–v63）和由被呼叫者
+保存的（r14–r31、f14–f31、v14–v31、v64–v127）暫存器輸出成每個函式自己的區域變數
+（`cr_as_local`…`non_volatile_as_local`，Unleashed Recompiled 全部開啟）；本專案全部關閉。欄位是記憶體，
+這個建置沒有 strict aliasing，遊戲每一次寫入記憶體之後編譯器都得重新讀回；區域變數可以留在主機暫存器裡。
+
+`localize_registers.py` 對 `generate_diagnostic.py` 已經寫好的程式做同樣的事，作者的改寫與檢查一個都不動：
+每個函式的 `ctx.<暫存器>` 改成區域變數，只在 context 與堆疊之間搬動被呼叫者保存暫存器的
+`__save*`／`__rest*` 輔助函式不再呼叫。另外兩件 XenonRecomp 的選項只憑呼叫慣例相信的事，這裡照顧到：
+
+- **寫入前就先讀的暫存器是輸入**（不算序言把被呼叫者保存暫存器存到堆疊指標下方）：例如堆疊探測這類
+  輔助函式，或被 XenonRecomp 切成兩段的函式的後段（沿用前段的 r31、測前段的比較結果）。它在那個函式
+  裡留在 context；呼叫它的函式（直接呼叫，或經過完全沒碰那個暫存器的函式）在呼叫前把區域變數存回
+  context、呼叫後再取回。
+- **主機端程式會讀呼叫者的 r14–r31**（hook、import 看 r20–r31 判斷情境）：呼叫 hook、import、間接
+  呼叫之前先把區域的 r14–r31 存回 context。`synchronize_resource_memory` 還會讀兩個堆疊位置（其中一個
+  是 `__savegprlr` 存連結暫存器的地方），所以呼叫它的函式整個不轉換。條件儲存之後把 cr0 從 context 取回。
+
+代價：`__savegprlr` 不再把連結暫存器存上堆疊，`GUEST_STACK` 之類的堆疊回溯診斷只看得到一部分呼叫者。
+
+用法（不必重跑 XenonRecomp）：
+
+```powershell
+python scripts\localize_registers.py out\recomp\diagnostic out\recomp\diagnostic-local
+.\scripts\build_tools.ps1 -Diagnostic -DiagnosticDirectory out/recomp/diagnostic-local
+```
+
+改回原本的程式碼：用 `-DiagnosticDirectory out/recomp/diagnostic` 再建置一次。

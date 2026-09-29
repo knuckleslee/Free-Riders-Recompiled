@@ -3,10 +3,19 @@
 
 namespace sfr {
 
+// The partial vectors (lvlx, lvrx, stvlx, stvrx) lie within one aligned
+// sixteen-byte block, so never across a page: a fast page takes them in one
+// step. Only a slow page checks the range and goes a byte at a time; the
+// title's race used them often enough for that to show in a profile
+// (docs/benchmark.md).
 VectorBytes load_vector_left(GuestMemory& memory, uint32_t address) {
     const uint32_t count = 16 - (address & 15);
-    memory.check(address, count);
     VectorBytes result{};
+    if (const uint8_t* bytes = memory.fast_read(address, count)) {
+        for (uint32_t i = 0; i < count; ++i) result[15 - i] = bytes[i];
+        return result;
+    }
+    memory.check(address, count);
     for (uint32_t i = 0; i < count; ++i)
         result[15 - i] = memory.load<uint8_t>(uint64_t(address) + i);
     return result;
@@ -17,6 +26,10 @@ VectorBytes load_vector_right(GuestMemory& memory, uint32_t address) {
     VectorBytes result{};
     if (!count) return result;
     const uint32_t first = address - count;
+    if (const uint8_t* bytes = memory.fast_read(first, count)) {
+        for (uint32_t i = 0; i < count; ++i) result[i] = bytes[count - 1 - i];
+        return result;
+    }
     memory.check(first, count);
     for (uint32_t i = 0; i < count; ++i)
         result[i] = memory.load<uint8_t>(uint64_t(address) - i - 1);
@@ -25,6 +38,10 @@ VectorBytes load_vector_right(GuestMemory& memory, uint32_t address) {
 
 void store_vector_left(GuestMemory& memory, uint32_t address, const VectorBytes& value) {
     const uint32_t count = 16 - (address & 15);
+    if (uint8_t* bytes = memory.fast_write(address, count)) {
+        for (uint32_t i = 0; i < count; ++i) bytes[i] = value[15 - i];
+        return;
+    }
     memory.check_write(address, count);
     for (uint32_t i = 0; i < count; ++i)
         memory.store<uint8_t>(uint64_t(address) + i, value[15 - i]);
@@ -33,7 +50,12 @@ void store_vector_left(GuestMemory& memory, uint32_t address, const VectorBytes&
 void store_vector_right(GuestMemory& memory, uint32_t address, const VectorBytes& value) {
     const uint32_t count = address & 15;
     if (!count) return;
-    memory.check_write(address - count, count);
+    const uint32_t first = address - count;
+    if (uint8_t* bytes = memory.fast_write(first, count)) {
+        for (uint32_t i = 0; i < count; ++i) bytes[count - 1 - i] = value[i];
+        return;
+    }
+    memory.check_write(first, count);
     for (uint32_t i = 0; i < count; ++i)
         memory.store<uint8_t>(address - i - 1, value[i]);
 }

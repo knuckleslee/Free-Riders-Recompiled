@@ -262,6 +262,7 @@ private:
     };
     static constexpr size_t read_only_word_limit = 16;
     void check_store_access(uint64_t address, uint64_t size, const PendingWrite* owner = nullptr) const;
+    void reserved_access_check(uint64_t address, uint64_t size) const;
     void check_pending_writes(uint64_t address, uint64_t size, const PendingWrite* owner = nullptr) const;
     void commit_impl(uint64_t address, uint64_t size, bool write_combined);
     void complete_store(uint64_t address, uint64_t size) const;

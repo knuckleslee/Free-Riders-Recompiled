@@ -203,6 +203,9 @@ uint32_t guest_view(GuestMemory& memory, uint32_t physical, uint64_t size) {
 }
 
 struct NativeRenderer::Impl {
+    // Tells one renderer from a later one at the same address (draw's cache).
+    static inline std::atomic<uint64_t> next_identity{1};
+    const uint64_t identity = next_identity.fetch_add(1, std::memory_order_relaxed);
     // What the presentation's current command list has bound (its
     // list_generation): the layout, sets and zero stream stay bound from draw
     // to draw, so only the first draw of a list binds them, and the pipeline
@@ -867,7 +870,19 @@ void NativeRenderer::draw(const NativeDraw& draw) {
         if (++verified == 1 || verified % 100000 == 0)
             std::cerr << "NATIVE_PIPELINE_KEY verified=" << verified << '\n';
     }
-    auto& pipeline = impl_->pipelines[key];  // copies the key only when inserting
+    // Draws in a row mostly share their state: the last draw's pipeline is
+    // taken again when its key matches, without hashing the key and probing
+    // the map (both showed in a race profile, docs/benchmark.md). Map nodes
+    // are stable and pipelines are never removed.
+    static thread_local std::vector<uint8_t> last_key;
+    static thread_local std::unique_ptr<plume::RenderPipeline>* last_pipeline = nullptr;
+    static thread_local uint64_t last_owner = 0;
+    if (!last_pipeline || last_owner != impl_->identity || key != last_key) {
+        last_pipeline = &impl_->pipelines[key];  // copies the key only when inserting
+        last_owner = impl_->identity;
+        last_key = key;
+    }
+    auto& pipeline = *last_pipeline;
     const std::array<plume::RenderInputSlot, 2> slots{plume::RenderInputSlot(0, draw.stride),
                                                        plume::RenderInputSlot(zero_slot, 0)};
     if (!pipeline) {

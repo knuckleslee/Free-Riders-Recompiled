@@ -108,6 +108,10 @@ static uint64_t host_thread_id() {
 }
 GuestMemory* active_memory = nullptr;
 static std::unordered_map<uint32_t, PPCFunc*> functions;
+// The same, indexed by (address - PPC_CODE_BASE) / 4: an indirect call looks
+// its target up once, as XenonRecomp's own PPC_LOOKUP_FUNC does, instead of
+// hashing into the map (a race profile's call_indirect, docs/benchmark.md).
+static std::vector<PPCFunc*> function_table;
 // Names come from string literals (generated code and hooks): keep the pointer,
 // as copying the name at every guest function entry cost a race frame ~1.5%.
 static std::atomic<bool> stack_dump_requested{false};
@@ -547,7 +551,10 @@ static std::string guest_back_chain(uint32_t frame) {
 }
 
 void guest_checkpoint_permit() {
-    guest_entry.checkpoint_countdown = 31;
+    // One call in 256 entries and loop labels (it was 32): the permit itself
+    // looks at the time only every 64th call, still far inside its 2 ms
+    // quantum, and the call was over 1% of a race frame (docs/benchmark.md).
+    guest_entry.checkpoint_countdown = 255;
     if (!execution_permit) throw std::logic_error("guest instruction without execution permit");
     // Validates ownership and cancellation before shared memory access, and
     // hands off only outside a reservation.
@@ -3533,11 +3540,13 @@ void enter_function_observed(PPCContext& ctx, const char* name, uint32_t address
     }
 }
 void call_indirect(PPCContext& ctx, uint8_t* base, uint32_t address) {
-    const auto found = functions.find(address);
-    if (found == functions.end()) throw RuntimeStop("indirect-call", address, "no verified function mapping");
+    const uint64_t index = (uint64_t(address) - PPC_CODE_BASE) / 4;
+    PPCFunc* const target = address % 4 == 0 && address >= PPC_CODE_BASE && index < function_table.size()
+        ? function_table[index] : nullptr;
+    if (!target) throw RuntimeStop("indirect-call", address, "no verified function mapping");
     const bool user_reset = unselected_user.active && unselected_user.reset_entered &&
         guest_entry.current_address == 0x82232598 && ctx.lr == 0x82232A30 && ctx.r3.u32 == unselected_user.record + 32;
-    found->second(ctx, base);
+    target(ctx, base);
     if (user_reset) unselected_user.reset_virtual = address;
 }
 }
@@ -3736,6 +3745,9 @@ int main(int argc, char** argv) {
                 throw std::runtime_error("function table address outside guest code");
             sfr::functions.emplace(static_cast<uint32_t>(mapping->guest), mapping->host);
         }
+        sfr::function_table.assign(PPC_CODE_SIZE / 4, nullptr);
+        for (const auto& [guest, host] : sfr::functions)
+            if (guest % 4 == 0) sfr::function_table[(guest - PPC_CODE_BASE) / 4] = host;
         const uint32_t tls_metadata = module.header_field(sfr::XexModule::header_address, 0x20104);
         if (!tls_metadata) throw std::runtime_error("diagnostic requires the title's TLS metadata");
         memory.check(tls_metadata, 16);

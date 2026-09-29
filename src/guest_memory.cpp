@@ -769,12 +769,21 @@ private:
 };
 }
 
+// A reserved load or conditional store to a fast page (committed, no import
+// variable or computed word) needs none of check_store_access's layout
+// search; strict_stores keeps it for the pending-read check. Lock-free
+// queues and critical sections made these some of a race's commonest
+// checked accesses (docs/benchmark.md).
+void GuestMemory::reserved_access_check(uint64_t address, uint64_t size) const {
+    if (strict_stores || !(fast_page(address, size) & fast_access)) check_store_access(address, size);
+}
+
 uint32_t GuestMemory::load_reserved_word(uint64_t address) {
     if (address % 4)
         throw RuntimeStop("memory-alignment", address, "reserved word load requires four-byte alignment");
     // Writable ordinary memory only: never sample a computed provider, and allow
     // replacement of a live reservation only after the complete load succeeds.
-    check_store_access(address, 4);
+    reserved_access_check(address, 4);
     if (intersects_write_combined(address, 4))
         throw RuntimeStop("memory-cache", address, "reserved word load does not support write-combined memory");
     StripeLock lock(address);
@@ -786,7 +795,7 @@ uint32_t GuestMemory::load_reserved_word(uint64_t address) {
 bool GuestMemory::store_conditional_word(uint64_t address, uint32_t value) {
     if (address % 4)
         throw RuntimeStop("memory-alignment", address, "conditional word store requires four-byte alignment");
-    check_store_access(address, 4);
+    reserved_access_check(address, 4);
     if (intersects_write_combined(address, 4))
         throw RuntimeStop("memory-cache", address, "conditional word store does not support write-combined memory");
     auto& reservation = guest_reservation;
@@ -815,7 +824,7 @@ uint64_t GuestMemory::load_reserved_doubleword(uint64_t address) {
     if (address % 8)
         throw RuntimeStop("memory-alignment", address,
                           "reserved doubleword load requires eight-byte alignment");
-    check_store_access(address, 8);
+    reserved_access_check(address, 8);
     if (intersects_write_combined(address, 8))
         throw RuntimeStop("memory-cache", address,
                           "reserved doubleword load does not support write-combined memory");
@@ -829,7 +838,7 @@ bool GuestMemory::store_conditional_doubleword(uint64_t address, uint64_t value)
     if (address % 8)
         throw RuntimeStop("memory-alignment", address,
                           "conditional doubleword store requires eight-byte alignment");
-    check_store_access(address, 8);
+    reserved_access_check(address, 8);
     if (intersects_write_combined(address, 8))
         throw RuntimeStop("memory-cache", address,
                           "conditional doubleword store does not support write-combined memory");
