@@ -317,7 +317,11 @@ def main():
     if not files:
         raise SystemExit(f'no ppc_recomp.*.cpp in {args.input}')
     hooks = hooked_functions(args.sources)
-    sources = {path.name: path.read_text(encoding='utf-8', newline='') for path in files}
+    sources = {}
+    for path in files:
+        # Newlines as they are (Path.read_text takes no newline before 3.13).
+        with open(path, encoding='utf-8', newline='') as source:
+            sources[path.name] = source.read()
     transformed, report = localize(sources, hooks)
     staging = args.output.parent / (args.output.name + '.staging-' + uuid.uuid4().hex)
     shutil.copytree(args.input, staging)

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -133,6 +134,31 @@ class LocalizeRegistersTest(unittest.TestCase):
         body = result['sub_82000000']
         self.assertIn('PPCVRegister v64{};', body)
         self.assertIn('sfr::load_vector_memory(uint32_t(ctx.r3.u32), v64.u8);', body)
+
+    def test_the_command_writes_a_localized_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            generated, output = directory / 'diagnostic', directory / 'diagnostic-local'
+            generated.mkdir()
+            (generated / 'report.json').write_text('{}\n')
+            (generated / 'ppc_func_mapping.cpp').write_text('// mapping\n')
+            (generated / 'ppc_recomp.0.cpp').write_bytes(unit(function('sub_82000000', (
+                '\tctx.r31.u64 = ctx.r3.u64;\r\n\tctx.r3.u64 = ctx.r31.u64;\r\n'))).encode())
+            sources = directory / 'src'
+            sources.mkdir()
+            (sources / 'hooks.cpp').write_text('SFR_HOOK(sub_82000100) {}\n')
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/localize_registers.py'), str(generated),
+                                     str(output), '--sources', str(sources)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((output / 'report.json').exists() and (output / 'ppc_func_mapping.cpp').exists())
+            text = (output / 'ppc_recomp.0.cpp').read_bytes().decode()
+            self.assertIn('PPCRegister r31{};', text)
+            self.assertIn('\tr31.u64 = ctx.r3.u64;\r\n', text)  # newlines kept as they were
+            report = json.loads((output / 'localize_report.json').read_text())
+            self.assertEqual((report['functions'], report['hooks']), (1, 1))
+            again = subprocess.run([sys.executable, str(ROOT / 'scripts/localize_registers.py'), str(generated),
+                                    str(output)], capture_output=True, text=True)
+            self.assertNotEqual(again.returncode, 0, 'an existing output is never overwritten')
 
     @unittest.skipUnless(shutil.which('clang++'), 'needs clang++')
     def test_the_localized_code_compiles(self):
