@@ -142,6 +142,14 @@ try {
     foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
 }
 
-$python = if (Get-Command python -ErrorAction SilentlyContinue) { 'python' } else { 'py' }
-& $python (Join-Path $PSScriptRoot 'benchmark_summary.py') $Out --skip $Skip
-Write-Output "Logs and summary.md are in $Out"
+# The py launcher first: 'python' may be the Microsoft Store's stand-in,
+# which runs nothing.
+$summary = Join-Path $PSScriptRoot 'benchmark_summary.py'
+foreach ($python in @(@('py', '-3'), @('python'))) {
+    if (-not (Get-Command $python[0] -ErrorAction SilentlyContinue)) { continue }
+    $rest = @($python | Select-Object -Skip 1)
+    & $python[0] @rest $summary $Out --skip $Skip
+    if (Test-Path -LiteralPath (Join-Path $Out 'summary.md')) { break }
+}
+if (Test-Path -LiteralPath (Join-Path $Out 'summary.md')) { Write-Output "Logs and summary.md are in $Out" }
+else { Write-Output "No Python ran the summary; the logs are in $Out (python scripts\benchmark_summary.py `"$Out`")" }

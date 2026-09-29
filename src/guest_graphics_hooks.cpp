@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <set>
 #include <span>
@@ -416,7 +417,8 @@ SFR_HOOK(sub_824E65A0) {
     // (scripts/benchmark.ps1) measures only the frames of a race.
     const bool racing=sfr::active_memory && sfr::active_memory->readable(0x83E52F8C,4) &&
                       sfr::active_memory->load<uint32_t>(0x83E52F8C)!=0;
-    present_log << " racing=" << racing << " presented=1 seconds="
+    // Seconds to a tenth of a millisecond, however long the run.
+    present_log << " racing=" << racing << " presented=1 seconds=" << std::fixed << std::setprecision(4)
               << std::chrono::duration<double>(std::chrono::steady_clock::now()-process_start).count() << '\n';
     std::cerr << present_log.str();
     frame_draws=frame_textured_draws=foreign_draws=0;
