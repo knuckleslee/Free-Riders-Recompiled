@@ -18,6 +18,20 @@ std::atomic<uint64_t> GuestExecution::main_thread_ready_wait_ns{0};
 std::atomic<uint64_t> GuestExecution::main_thread_blocked_ns{0};
 std::array<std::atomic<uint64_t>, 64> GuestExecution::owner_reason{};
 std::atomic<bool> GuestExecution::account_reasons{false};
+std::atomic<int64_t> GuestExecution::main_spin_us{0};
+
+namespace {
+// A pause for a spinning waiter: kinder to the core's other hardware thread.
+inline void cpu_relax() {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+    __builtin_ia32_pause();
+#elif defined(__aarch64__) || defined(__arm__)
+    asm volatile("yield");
+#else
+    std::this_thread::yield();
+#endif
+}
+}
 
 GuestExecutionCancelled::GuestExecutionCancelled()
     : std::runtime_error("guest execution cancelled") {}
@@ -37,6 +51,9 @@ struct GuestExecution::State {
     struct Ready : Waiter {
         explicit Ready(Waiter waiter) : Waiter(waiter) {}
         std::condition_variable turn;
+        // Set by notify when it may be this guest's turn: a spinning waiter
+        // (wait_turn) watches it without the mutex.
+        std::atomic<bool> signalled{false};
     };
 
     mutable std::mutex mutex;
@@ -82,10 +99,42 @@ struct GuestExecution::State {
     void notify() {
         changed.notify_all();
         if (stopping) {
-            for (const auto& waiter : ready) waiter->turn.notify_all();
+            for (const auto& waiter : ready) {
+                waiter->signalled.store(true, std::memory_order_release);
+                waiter->turn.notify_all();
+            }
         } else if (owner_id == 0 && !ready.empty()) {
+            ready.front()->signalled.store(true, std::memory_order_release);
             ready.front()->turn.notify_one();
         }
+    }
+
+    // Waits, under mutex, until it is self's turn (or stopping). The main
+    // thread spins for up to main_spin_us before it sleeps: a sleeping
+    // waiter first has to be scheduled again by the host, and that latency,
+    // paid on every handoff, was a few ms of each race frame
+    // (main_ready_unowned_ms, docs/benchmark.md).
+    template<typename Turn>
+    void wait_turn(std::unique_lock<std::mutex>& lock, Ready& self, Turn turn) {
+        const auto spin = std::chrono::microseconds(main_spin_us.load(std::memory_order_relaxed));
+        if (self.guest_id == 1 && spin.count() > 0) {
+            const auto deadline = std::chrono::steady_clock::now() + spin;
+            while (!turn()) {
+                self.signalled.store(false, std::memory_order_relaxed);
+                lock.unlock();
+                bool expired = false;
+                for (unsigned polls = 0; !self.signalled.load(std::memory_order_acquire); ++polls) {
+                    cpu_relax();
+                    if ((polls & 63) == 63 && std::chrono::steady_clock::now() >= deadline) {
+                        expired = true;
+                        break;
+                    }
+                }
+                lock.lock();
+                if (expired) break;
+            }
+        }
+        self.turn.wait(lock, turn);
     }
 
     void enqueue(const std::shared_ptr<Ready>& waiter, bool woken) {
@@ -263,7 +312,7 @@ void GuestExecution::Lease::checkpoint(bool allow_handoff) {
         lock.lock();
     }
     const auto queued_at = std::chrono::steady_clock::now();
-    self->turn.wait(lock, [&] {
+    state_->wait_turn(lock, *self, [&] {
         return state_->stopping ||
             (state_->owner_id == 0 && !state_->ready.empty() && state_->ready.front() == self);
     });
@@ -389,7 +438,7 @@ void GuestExecution::Lease::run_blocking(std::function<void(std::stop_token)> op
     }
     state_->notify();
     const auto queued_at = std::chrono::steady_clock::now();
-    self->turn.wait(lock, [&] {
+    state_->wait_turn(lock, *self, [&] {
         return state_->stopping ||
             (state_->owner_id == 0 && !state_->ready.empty() && state_->ready.front() == self);
     });
@@ -453,7 +502,7 @@ void GuestExecution::Lease::attach_self() {
     auto self = std::make_shared<State::Ready>(State::Waiter{guest_id_, std::this_thread::get_id()});
     state_->enqueue(self, true);
     state_->notify();
-    self->turn.wait(lock, [&] {
+    state_->wait_turn(lock, *self, [&] {
         return state_->stopping ||
             (state_->owner_id == 0 && !state_->ready.empty() && state_->ready.front() == self);
     });
@@ -503,7 +552,7 @@ std::unique_ptr<GuestExecution::Lease> GuestExecution::enter_identity(uint64_t g
     auto self = std::make_shared<State::Ready>(State::Waiter{guest_id, std::this_thread::get_id()});
     state_->enqueue(self, true);
     state_->notify();
-    self->turn.wait(lock, [&] {
+    state_->wait_turn(lock, *self, [&] {
         return state_->stopping ||
             (state_->owner_id == 0 && !state_->ready.empty() && state_->ready.front() == self);
     });

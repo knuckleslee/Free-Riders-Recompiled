@@ -3770,6 +3770,11 @@ int main(int argc, char** argv) {
             core->set_scheduling_quantum(std::chrono::microseconds(2000));
             execution.add_follower(*core);  // a guest blocked on its core wakes at shutdown
         }
+        // SFR_MAIN_SPIN_US=N (experiment, off): the main thread spins up to N
+        // microseconds for its turn at the permit before it sleeps, so a
+        // handoff need not wait for the host to schedule it again
+        // (docs/benchmark.md).
+        sfr::GuestExecution::main_spin_us = limit_from_environment("SFR_MAIN_SPIN_US", 0);
         // SFR_MAIN_URGENT=1 (experiment, off): make the title's main thread
         // (guest 1) time-critical. It spends about a third of a race frame
         // ready but queued behind a job worker for the one permit

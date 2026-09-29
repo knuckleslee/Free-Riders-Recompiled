@@ -56,6 +56,7 @@ cd C:\Users\<你>\Documents\free-riders-recompiled
 | `no-gpu-pipeline` | `SFR_GPU_PIPELINE=0` | GPU 晚一格的效果 |
 | `vulkan` | `SFR_GRAPHICS=vulkan` | Vulkan 對 Direct3D 12 |
 | `held` | `SFR_PARALLEL_HELD=1` | 哪些 import／hook 讓脫離的客體執行緒回到全域許可、每格持有多久（`summary.md` 最後一張表） |
+| `main-spin` | `SFR_MAIN_SPIN_US=1000` | 主執行緒排隊時先原地等待最多 1 ms 再睡，省掉被作業系統重新排上 CPU 的延遲 |
 
 ## 怎麼走到比賽
 
@@ -149,3 +150,22 @@ import 裡等待（`NtSuspendThread` 自我暫停、等臨界區段），等待�
 那兩趟 `held`（commit `bcb99b9`）整體慢到 4–10 fps，排隊的時間幾乎都是交接空窗
 （比賽後段每格 49–142 ms），而且越跑越慢；還不確定是當時電腦忙碌還是第一版的計時造成，
 下一輪把 `baseline` 和 `held` 交錯跑來分辨。
+
+## 2026-09-30：只叫醒下一位之後（commit `a2776cb`）
+
+`baseline`、`held` 交錯各兩趟，四趟都正常跑完：
+
+| 設定 | 平均 fps | 每格中位數 ms | P95 ms |
+| --- | ---: | ---: | ---: |
+| baseline | 25.5 | 39.4 | 53.9 |
+| held | 25.7 | 39.7 | 51.5 |
+
+- `held` 不再拖慢遊戲：上一輪的 4-10 fps 不是 `SFR_PARALLEL_HELD` 本身造成的。
+- **只叫醒下一位在實際遊戲裡沒有效果**：交接空窗 2.6-5.0 ms，和之前的 2.4-3.1 ms 差不多；
+  排在別人後面的時間略少（1.5-2.1 ms，之前 2.1-3.9 ms）。實際遊戲裡的空窗不是叫醒太多條
+  造成，而是每次交接都要等主機把下一位重新排上 CPU。
+- 擋住主執行緒的原因很分散，最大幾項每格 0.1-0.25 ms：處理器 0 上客體 18、37、16 自己的
+  程式、客體 37 的 `NtSuspendThread`、客體 15 在深度畫面 hook（`82439530`）、客體 30 的
+  `NtReadFile`、客體 11 在骨架 hook（`827707B0`）。全部改成不必拿許可也省不到 1 ms。
+
+下一步試 `main-spin`：主執行緒排隊時先原地等待，不必等主機把它重新排上 CPU。

@@ -58,6 +58,8 @@ $settings = @{
     # baseline, reporting why detached guests come back to the global permit
     # and how long they hold it (PARALLEL_HELD, summed in summary.md)
     'held'         = @{ SFR_PARALLEL_HELD = '1' }
+    # the main thread spins up to 1 ms for its turn at the permit before it sleeps
+    'main-spin'    = @{ SFR_MAIN_SPIN_US = '1000' }
 }
 # "a,b" arrives as one string through powershell -File.
 $Configs = @($Configs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })

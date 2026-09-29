@@ -101,6 +101,9 @@ public:
     // while it runs its own code. Only kept when reasons are wanted.
     static std::array<std::atomic<uint64_t>, 64> owner_reason;
     static std::atomic<bool> account_reasons;
+    // How long the main thread (guest 1) spins for its turn before it
+    // sleeps, in microseconds; 0 sleeps at once (SFR_MAIN_SPIN_US).
+    static std::atomic<int64_t> main_spin_us;
     struct Timing {
         // Per scheduler, not summed across overlapping global/core permits.
         // Index 0 accounts host completion identities (guest IDs are 1..63).

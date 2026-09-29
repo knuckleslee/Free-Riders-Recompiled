@@ -60,6 +60,46 @@ void timing_charges_main_ready_to_the_owners_reason() {
     require(gate.take_timing().main_ready_by_reason_ns.empty(), "no reasons are kept when they are not wanted");
 }
 
+void spinning_main_thread_still_takes_its_turn_in_order() {
+    sfr::GuestExecution::main_spin_us = 2000;
+    struct Restore { ~Restore() { sfr::GuestExecution::main_spin_us = 0; } } restore;
+    sfr::GuestExecution gate;
+    gate.set_scheduling_quantum(std::chrono::microseconds(1));
+    std::atomic<int> turns{0};
+    std::atomic<bool> done{false};
+    auto guest = [&](uint32_t id) {
+        return std::async(std::launch::async, [&, id] {
+            try {
+                auto lease = gate.enter(id);
+                while (!done) {
+                    ++turns;
+                    // The main thread also sleeps a moment inside a wait, so
+                    // it queues again behind whoever ran meanwhile.
+                    if (id == 1 && turns % 7 == 0)
+                        lease->run_blocking([](std::stop_token) { std::this_thread::sleep_for(std::chrono::microseconds(50)); });
+                    lease->checkpoint();
+                }
+            } catch (const sfr::GuestExecutionCancelled&) {}
+        });
+    };
+    auto main = guest(1), other = guest(2), third = guest(3);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    done = true;
+    ready(main, "a spinning main thread finishes");
+    ready(other, "the others are not starved by the spinning main thread");
+    ready(third, "every guest keeps its turn");
+    require(turns > 100, "guests hand the permit to one another while the main thread spins");
+    // Stopping wakes a main thread that is spinning in the queue.
+    auto owner = gate.enter(5);
+    auto waiting = std::async(std::launch::async, [&] {
+        try { auto lease = gate.enter(1); return false; }
+        catch (const sfr::GuestExecutionCancelled&) { return true; }
+    });
+    gate.wait_until_ready(1);
+    gate.stop();
+    require(waiting.get(), "stop cancels a spinning waiter");
+}
+
 void acquires_initial_owner() {
     sfr::GuestExecution gate;
     auto owner = gate.enter(1);
@@ -644,6 +684,7 @@ int main() {
     for (auto test : {Test{"live per-instance timing", timing_separates_instances_and_accounts_live_holds},
                       {"main-ready attribution", timing_attributes_only_holds_overlapping_main_ready},
                       {"main-ready reasons", timing_charges_main_ready_to_the_owners_reason},
+                      {"spinning main thread", spinning_main_thread_still_takes_its_turn_in_order},
                       {"detached wait", detached_wait_does_not_queue_for_global},
                       {"detached wait cancellation", detached_wait_observes_cancellation},
                       {"initial owner", acquires_initial_owner},
