@@ -411,6 +411,22 @@ SFR_HOOK(sub_824E65A0) {
               << " main_ready_ms=" << double(main_ready_ns)/1e6
               << " main_ready_unowned_ms=" << double(execution_work[0].main_ready_unowned_ns)/1e6
               << " main_blockers=" << permit_holders(execution_work[0].main_ready_by_owner_ns);
+    // SFR_PARALLEL_HELD=1: what the guests the main thread queued behind
+    // were doing (guest:reason:ms, reason 0 their own code; the names are
+    // the PARALLEL_REASON lines).
+    if(!execution_work[0].main_ready_by_reason_ns.empty()) {
+        std::vector<std::pair<uint64_t,uint64_t>> reasons;
+        for(const auto& [key,ns]:execution_work[0].main_ready_by_reason_ns) reasons.push_back({ns,key});
+        std::sort(reasons.rbegin(),reasons.rend());
+        present_log << " main_blockers_by_reason=";
+        char item[64];
+        for(size_t i=0;i<reasons.size() && i<8;++i) {
+            const uint64_t key=reasons[i].second;
+            std::snprintf(item,sizeof item,"%s%u:0x%llx:%.3f",i?",":"",unsigned(key>>48),
+                          (unsigned long long)(key&0xFFFFFFFFFFFFull),double(reasons[i].first)/1e6);
+            present_log << item;
+        }
+    }
     for(size_t core=0;core<6;++core)
         present_log << " core" << core << "_holders=" << permit_holders(execution_work[core+1].held_ns);
     // [83E52F8C] is the title's race flag (docs/pad-menus.md): a benchmark

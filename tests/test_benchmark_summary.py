@@ -63,18 +63,21 @@ class BenchmarkSummaryTest(unittest.TestCase):
             self.assertIn('| warmup | 1 | 20.0', runs)
             self.assertNotIn('warmup', comparison)
 
-    def test_sums_what_held_the_permit_during_the_race_only(self):
+    def test_sums_what_the_main_thread_queued_behind_during_the_race(self):
         with tempfile.TemporaryDirectory() as directory:
-            held = ('PARALLEL_HELD guest=37 hook=0x824a3398 count=10 ms=4.5\n'
-                    'PARALLEL_HELD guest=16 import=0x82acc5ec name=XNotifyGetNext count=20 ms=1.5\n')
-            lines = [present(0, 0.016, 0), held, present(1, 0.032, 0)]  # the menu: not counted
-            lines += [present(2 + i, 0.05 + i * 0.04, 1) for i in range(4)] + [held]
+            names = ('PARALLEL_REASON reason=0x2824a3398 kind=hook\n'
+                     'PARALLEL_REASON reason=0x182acc5ec kind=import name=XNotifyGetNext\n')
+            reasons = 'main_blockers_by_reason=37:0x2824a3398:1.500,7:0x0:0.250,16:0x182acc5ec:0.500'
+            lines = [names, present(0, 0.016, 0, main_blockers_by_reason='37:0x2824a3398:9.000')]  # the menu
+            lines += [present(1 + i, 0.05 + i * 0.04, 1).replace('racing=1', reasons + ' racing=1') for i in range(4)]
             (Path(directory) / 'held-1.log').write_text(''.join(lines), encoding='utf-8')
             table = bench.held_table(directory)
-            self.assertIn('| 37 | hook | 0x824a3398 |  | 2.50 | 1.125 |', table)
-            self.assertIn('| 16 | import | 0x82acc5ec | XNotifyGetNext | 5.00 | 0.375 |', table)
+            self.assertIn('| 37 | hook | 0x824a3398 |  | 1.500 |', table)
+            self.assertIn('| 16 | import | 0x82acc5ec | XNotifyGetNext | 0.500 |', table)
+            self.assertIn('| 7 | 自己的程式 |  |  | 0.250 |', table)
             self.assertLess(table.index('| 37 |'), table.index('| 16 |'))
-
+            # Skipped race frames are left out, like every other number.
+            self.assertIn('| 37 | hook | 0x824a3398 |  | 1.500 |', bench.held_table(directory, skip=2))
 
 if __name__ == '__main__':
     unittest.main()

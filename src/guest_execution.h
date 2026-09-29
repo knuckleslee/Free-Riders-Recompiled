@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <array>
+#include <unordered_map>
 #include <chrono>
 #include <cstdint>
 #include <exception>
@@ -94,12 +95,20 @@ public:
     // Nanoseconds guest 1 has spent in run_blocking operations: waits on
     // events, other threads and sleeps.
     static std::atomic<uint64_t> main_thread_blocked_ns;
+    // What each guest holding a permit is doing there, for the time the
+    // main thread queues behind it (Timing::main_ready_by_reason_ns): set by
+    // the guest when it takes the permit back for an import or a hook, 0
+    // while it runs its own code. Only kept when reasons are wanted.
+    static std::array<std::atomic<uint64_t>, 64> owner_reason;
+    static std::atomic<bool> account_reasons;
     struct Timing {
         // Per scheduler, not summed across overlapping global/core permits.
         // Index 0 accounts host completion identities (guest IDs are 1..63).
         std::array<uint64_t, 64> held_ns{};
         std::array<uint64_t, 64> main_ready_by_owner_ns{};
         uint64_t main_ready_unowned_ns = 0;
+        // (owner guest << 48 | owner_reason) -> ns the main thread queued.
+        std::unordered_map<uint64_t, uint64_t> main_ready_by_reason_ns;
     };
     // Consumes this instance's counters, including the owner's current hold.
     // All accounting is clipped at the snapshot; release never recounts it.

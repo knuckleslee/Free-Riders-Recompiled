@@ -38,6 +38,28 @@ struct StopOnExit {
     ~StopOnExit() { gate.stop(); }
 };
 
+void timing_charges_main_ready_to_the_owners_reason() {
+    sfr::GuestExecution gate;
+    auto owner = gate.enter(29);
+    sfr::GuestExecution::account_reasons = true;
+    sfr::GuestExecution::owner_reason[29] = 0x20824A3398ull;  // a hook
+    auto main = std::async(std::launch::async, [&] { auto lease = gate.enter(1); });
+    StopOnExit cleanup{gate};
+    gate.wait_until_ready(1);
+    hold_a_while();
+    const auto timing = gate.take_timing();
+    const uint64_t key = (uint64_t(29) << 48) | 0x20824A3398ull;
+    require(timing.main_ready_by_reason_ns.contains(key) && timing.main_ready_by_reason_ns.at(key) > 0,
+            "the main thread's queue is charged to what its owner is doing");
+    require(timing.main_ready_by_reason_ns.at(key) <= timing.main_ready_by_owner_ns[29],
+            "a reason is never charged more than its owner");
+    sfr::GuestExecution::owner_reason[29] = 0;
+    sfr::GuestExecution::account_reasons = false;
+    owner.reset();
+    ready(main, "main gets its turn after the owner releases");
+    require(gate.take_timing().main_ready_by_reason_ns.empty(), "no reasons are kept when they are not wanted");
+}
+
 void acquires_initial_owner() {
     sfr::GuestExecution gate;
     auto owner = gate.enter(1);
@@ -621,6 +643,7 @@ int main() {
     struct Test { const char* name; void (*run)(); };
     for (auto test : {Test{"live per-instance timing", timing_separates_instances_and_accounts_live_holds},
                       {"main-ready attribution", timing_attributes_only_holds_overlapping_main_ready},
+                      {"main-ready reasons", timing_charges_main_ready_to_the_owners_reason},
                       {"detached wait", detached_wait_does_not_queue_for_global},
                       {"detached wait cancellation", detached_wait_observes_cancellation},
                       {"initial owner", acquires_initial_owner},

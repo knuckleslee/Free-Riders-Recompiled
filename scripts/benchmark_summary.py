@@ -62,48 +62,58 @@ def read_run(path, skip):
     return frames, racing_seen, ended
 
 
-HELD = re.compile(r'^PARALLEL_HELD guest=(\d+) (import|hook|memory)=(0x[0-9a-f]+)(?: name=(\S+))? count=(\d+) ms=([\d.]+)')
+REASON = re.compile(r'^PARALLEL_REASON reason=(0x[0-9a-f]+) kind=(\w+)(?: name=(\S+))?')
+KINDS = {1: 'import', 2: 'hook', 3: 'memory'}
 
 
-def read_held(path):
-    """What brought detached guests back to the global permit during the
-    race (SFR_PARALLEL_HELD=1): {(guest, kind, address, name): [count, ms]},
-    and the race frames the reports cover."""
-    held, racing, frames = {}, False, 0
+def read_reasons(path, skip=0):
+    """Why the main thread queued during the race (SFR_PARALLEL_HELD=1):
+    {(guest, reason): ms} summed over the measured race frames, the names of
+    the reasons, and how many frames were summed."""
+    queued, names, racing_seen, frames = {}, {}, 0, 0
     with open(path, encoding='utf-8', errors='replace') as log:
         for line in log:
-            if line.startswith('NATIVE_PRESENT'):
-                racing = ' racing=1 ' in line
-                frames += racing
+            match = REASON.match(line)
+            if match:
+                names[int(match.group(1), 16)] = (match.group(2), match.group(3) or '')
                 continue
-            match = HELD.match(line)
-            if not match or not racing:
+            if not line.startswith('NATIVE_PRESENT') or ' racing=1 ' not in line:
                 continue
-            guest, kind, address, name, count, ms = match.groups()
-            entry = held.setdefault((int(guest), kind, address, name or ''), [0, 0.0])
-            entry[0] += int(count)
-            entry[1] += float(ms)
-    return held, frames
+            racing_seen += 1
+            if racing_seen <= skip:
+                continue
+            frames += 1
+            fields = dict(FIELD.findall(line))
+            for item in filter(None, fields.get('main_blockers_by_reason', '').split(',')):
+                guest, reason, ms = item.split(':')
+                key = (int(guest), int(reason, 16))
+                queued[key] = queued.get(key, 0.0) + float(ms)
+    return queued, names, frames
 
 
-def held_table(directory, top=15):
-    """The reasons held longest, per race frame, over every run that reported them."""
-    total, frames = {}, 0
+def held_table(directory, skip=0, top=15):
+    """The reasons the main thread queued behind longest, per race frame,
+    over every run that reported them."""
+    total, names, frames = {}, {}, 0
     for log in sorted(Path(directory).glob('*.log')):
-        held, race_frames = read_held(log)
-        if not held:
+        queued, run_names, run_frames = read_reasons(log, skip)
+        if not queued:
             continue
-        frames += race_frames
-        for key, (count, ms) in held.items():
-            entry = total.setdefault(key, [0, 0.0])
-            entry[0] += count
-            entry[1] += ms
-    if not total:
+        names.update(run_names)
+        frames += run_frames
+        for key, ms in queued.items():
+            total[key] = total.get(key, 0.0) + ms
+    if not total or not frames:
         return ''
-    lines = ['回到全域許可的原因（比賽中，每格平均）：', '',
-             '| 客體 | 種類 | 位址 | 名稱 | 每格次數 | 每格持有 ms |', '| ---: | --- | --- | --- | ---: | ---: |']
-    for (guest, kind, address, name), (count, ms) in sorted(total.items(), key=lambda item: -item[1][1])[:top]:
-        lines.append(f'| {guest} | {kind} | {address} | {name} | {count / frames:.2f} | {ms / frames:.3f} |')
+    lines = ['主執行緒排隊時，擋住它的執行緒在做什麼（比賽中，每格平均）：', '',
+             '| 客體 | 種類 | 位址 | 名稱 | 每格 ms |', '| ---: | --- | --- | --- | ---: |']
+    for (guest, reason), ms in sorted(total.items(), key=lambda item: -item[1])[:top]:
+        if reason == 0:
+            kind, address, name = '自己的程式', '', ''
+        else:
+            kind, name = names.get(reason, (KINDS.get(reason >> 32, '?'), ''))
+            address = f'0x{reason & 0xFFFFFFFF:08x}'
+        lines.append(f'| {guest} | {kind} | {address} | {name} | {ms / frames:.3f} |')
     return '\n'.join(lines)
 
 
@@ -158,7 +168,7 @@ def summarise(directory, skip):
             lines.append(f'| {config} | {repeat} | ' +
                          ' | '.join(fmt.format(stats[key]) for key, _, fmt in COLUMNS) + f' | {ended} |')
     lines += ['', compare(rows)]
-    held = held_table(directory)
+    held = held_table(directory, skip)
     if held:
         lines += ['', held]
     return '\n'.join(lines), rows

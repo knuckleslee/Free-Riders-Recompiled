@@ -417,23 +417,20 @@ static constexpr uint32_t parallel_worker_entry = 0x8222E008;
 //                          next function entry.
 static void refresh_entry_observation();
 static std::atomic<uint64_t> parallel_attaches[3]{};  // import, hook, memory
-// SFR_PARALLEL_HELD=1: how long each detached guest holds the global permit
-// once back on it, and why (the import, hook or page that brought it back).
-// While it does, the main thread queues behind it (main_queued_ms), so the
-// top of this list is what to make permit-free next. Every five seconds,
-// the ten reasons held longest since the last report.
+// SFR_PARALLEL_HELD=1: why the main thread queues for the global permit.
+// A detached guest that takes the permit back for an import, a hook or a
+// slow memory access names that reason (GuestExecution::owner_reason) until
+// it detaches again, and the permit's own accounting charges the time the
+// main thread spends queued behind it to that reason. A hold that ends in a
+// wait releases the permit, so the wait is never counted. Each present
+// prints the frame's reasons (main_blockers_by_reason=); each reason's name
+// is printed once, as PARALLEL_REASON.
 static const bool parallel_held_report = [] {
     const char* const text = std::getenv("SFR_PARALLEL_HELD");
-    return text && *text && *text != '0';
+    const bool wanted = text && *text && *text != '0';
+    GuestExecution::account_reasons.store(wanted, std::memory_order_relaxed);
+    return wanted;
 }();
-struct ParallelHold { const char* name = nullptr; uint64_t count = 0, ns = 0; };
-static thread_local struct {
-    bool open = false;
-    int reason = 0;
-    uint32_t address = 0;
-    const char* name = nullptr;
-    std::chrono::steady_clock::time_point since;
-} parallel_hold;
 
 static void parallel_attached(int reason, uint32_t address = 0, const char* name = nullptr) {
     parallel_attaches[reason].fetch_add(1, std::memory_order_relaxed);
@@ -441,44 +438,27 @@ static void parallel_attached(int reason, uint32_t address = 0, const char* name
     if (++count % 20000 == 0)
         std::cerr << "PARALLEL_STATS imports=" << parallel_attaches[0] << " hooks=" << parallel_attaches[1]
                   << " memory=" << parallel_attaches[2] << char(10);
-    if (parallel_held_report)
-        parallel_hold = {true, reason, address, name, std::chrono::steady_clock::now()};
+    if (!parallel_held_report || current_id >= 64) return;
+    // 0 is the guest's own code: kinds count from one.
+    const uint64_t key = (uint64_t(reason + 1) << 32) | address;
+    GuestExecution::owner_reason[current_id].store(key, std::memory_order_relaxed);
+    static std::mutex lock;
+    static std::unordered_set<uint64_t> named;
+    std::lock_guard guard(lock);
+    if (named.insert(key).second) {
+        static const char* const kinds[] = {"import", "hook", "memory"};
+        std::cerr << "PARALLEL_REASON reason=0x" << std::hex << key << std::dec << " kind=" << kinds[reason];
+        // Import names are the table's "__imp__" symbols.
+        if (name) std::cerr << " name=" << (std::strncmp(name, "__imp__", 7) ? name : name + 7);
+        std::cerr << char(10);
+    }
 }
 
 // Every detach of a detached guest that came back to the permit goes
-// through here, so its hold is counted.
+// through here: it is back to its own code.
 static void parallel_detach() {
-    if (parallel_held_report && parallel_hold.open) {
-        parallel_hold.open = false;
-        const auto now = std::chrono::steady_clock::now();
-        const uint64_t ns = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(now - parallel_hold.since).count());
-        static std::mutex lock;
-        static std::unordered_map<uint64_t, ParallelHold> held;
-        static auto reported = now;
-        std::lock_guard guard(lock);
-        ParallelHold& entry = held[(uint64_t(current_id) << 40) | (uint64_t(parallel_hold.reason) << 32) | parallel_hold.address];
-        if (parallel_hold.name) entry.name = parallel_hold.name;
-        ++entry.count;
-        entry.ns += ns;
-        if (now - reported >= std::chrono::seconds(5)) {
-            std::vector<std::pair<uint64_t, uint64_t>> top;
-            for (const auto& [key, value] : held) top.push_back({value.ns, key});
-            std::sort(top.rbegin(), top.rend());
-            static const char* const kinds[] = {"import", "hook", "memory"};
-            for (size_t i = 0; i < top.size() && i < 10; ++i) {
-                const uint64_t key = top[i].second;
-                const ParallelHold& value = held[key];
-                std::cerr << "PARALLEL_HELD guest=" << (key >> 40) << ' ' << kinds[(key >> 32) & 0xFF] << "=0x"
-                          << std::hex << uint32_t(key) << std::dec;
-                // Import names are the table's "__imp__" symbols.
-                if (value.name) std::cerr << " name=" << (std::strncmp(value.name, "__imp__", 7) ? value.name : value.name + 7);
-                std::cerr << " count=" << value.count << " ms=" << double(value.ns) / 1e6 << char(10);
-            }
-            std::cerr << "PARALLEL_HELD_END seconds=" << std::chrono::duration<double>(now - reported).count() << char(10);
-            held.clear();
-            reported = now;
-        }
-    }
+    if (parallel_held_report && current_id < 64)
+        GuestExecution::owner_reason[current_id].store(0, std::memory_order_relaxed);
     execution_permit->detach();
 }
 
