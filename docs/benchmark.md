@@ -209,23 +209,36 @@ XenonRecomp 能把 CR、CTR、XER、保留值，以及呼叫之間不必保留�
 這個建置沒有 strict aliasing，遊戲每一次寫入記憶體之後編譯器都得重新讀回；區域變數可以留在主機暫存器裡。
 
 `localize_registers.py` 對 `generate_diagnostic.py` 已經寫好的程式做同樣的事，作者的改寫與檢查一個都不動：
-每個函式的 `ctx.<暫存器>` 改成區域變數，只在 context 與堆疊之間搬動被呼叫者保存暫存器的
-`__save*`／`__rest*` 輔助函式不再呼叫。另外兩件 XenonRecomp 的選項只憑呼叫慣例相信的事，這裡照顧到：
+每個函式的 `ctx.<暫存器>` 改成區域變數，只把暫存器從堆疊搬回 context 的 `__rest*` 輔助函式不再呼叫。
+另外幾件 XenonRecomp 的選項只憑呼叫慣例相信的事，這裡照顧到：
 
 - **寫入前就先讀的暫存器是輸入**（不算序言把被呼叫者保存暫存器存到堆疊指標下方）：例如堆疊探測這類
   輔助函式，或被 XenonRecomp 切成兩段的函式的後段（沿用前段的 r31、測前段的比較結果）。它在那個函式
   裡留在 context；呼叫它的函式（直接呼叫，或經過完全沒碰那個暫存器的函式）在呼叫前把區域變數存回
   context、呼叫後再取回。
 - **主機端程式會讀呼叫者的 r14–r31**（hook、import 看 r20–r31 判斷情境）：呼叫 hook、import、間接
-  呼叫之前先把區域的 r14–r31 存回 context。`synchronize_resource_memory` 還會讀兩個堆疊位置（其中一個
-  是 `__savegprlr` 存連結暫存器的地方），所以呼叫它的函式整個不轉換。條件儲存之後把 cr0 從 context 取回。
+  呼叫之前先把區域的 r14–r31 存回 context。`synchronize_resource_memory` 還會讀兩個堆疊位置，所以呼叫
+  它的函式整個不轉換；顯示裝置全域變數（0x82000664）的處理程式在 `sub_824F19E8` 執行中讀它的 r31 與
+  堆疊上的連結暫存器，這個函式也不轉換。條件儲存之後把 cr0 從 context 取回。
+- **沒轉換的函式仍把暫存器放在 context**：它呼叫的已轉換函式若為了 hook 或輸入把區域的被呼叫者保存
+  暫存器存進 context，返回時（`SfrRestore` 的解構子）把進入時的值放回去，呼叫者看到的跟呼叫前一樣。
+- **區域變數的初值取自 context**：分析沒看到的路徑（跳過第一次寫入）讀到的仍是 context 的值，序言存上
+  堆疊的也是呼叫者的值；每條路徑都先寫的，編譯器會把這次讀取刪掉。
+- **`__save*` 照舊呼叫**（先把 r12、r11 存回 context）：堆疊上仍有被呼叫者保存暫存器和連結暫存器，
+  切開的後段裡留下的 `__rest*`、讀堆疊的主機端程式都拿得到正確的值。
 
-代價：`__savegprlr` 不再把連結暫存器存上堆疊，`GUEST_STACK` 之類的堆疊回溯診斷只看得到一部分呼叫者。
+第一版（commit 377c293）少了後三項，遊戲開機就停在 `STOP memory-access @0x0`：沒轉換的函式（例如
+呼叫 `synchronize_resource_memory` 的，或 r31 被判定為輸入的）呼叫已轉換的函式後，自己的 r14–r31 已經
+被換成對方的值。`tests/test_localize_registers.py` 的
+`test_callers_find_their_registers_as_they_left_them` 實際編譯執行這個情況。
+
+`SFR_DIAGNOSTIC_ENTRIES=1` 的幾個稽核（語言選擇、DDS 解析）在函式進入點讀呼叫者的 r30／r31，轉換過的
+程式不支援；遊戲與基準測試都是關閉的。
 
 用法（不必重跑 XenonRecomp）：
 
 ```powershell
-python scripts\localize_registers.py out\recomp\diagnostic out\recomp\diagnostic-local
+py scripts\localize_registers.py out\recomp\diagnostic out\recomp\diagnostic-local
 .\scripts\build_tools.ps1 -Diagnostic -DiagnosticDirectory out/recomp/diagnostic-local
 ```
 

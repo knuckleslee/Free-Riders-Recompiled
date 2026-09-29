@@ -14,10 +14,10 @@ a local lives in a host register. This build had them all off.
 
 This does the same to the checked diagnostic sources generate_diagnostic.py
 writes, so none of its rewrites or audits change: every "ctx.<register>" of
-a function becomes a local of that function, and the __save/__rest helpers
-that only moved non-volatile registers between the context and the stack
-are no longer called. On top of what XenonRecomp does, it keeps two things
-correct that its options take on trust:
+a function becomes a local of that function, and the __rest helpers that
+only moved non-volatile registers from the stack back to the context are no
+longer called. On top of what XenonRecomp does, it keeps these correct,
+which its options take on trust:
 
 - A function that reads a register before it writes it (not counting a
   store of a callee-saved register to its own stack frame) takes that
@@ -31,6 +31,14 @@ correct that its options take on trust:
   (a hook, an import, an sfr:: helper that takes the context, an indirect
   call) the caller's local r14-r31 are stored to the context; after a
   conditional store cr0 is taken back.
+- Functions left as they are keep their registers in the context. A
+  localized function that stores a callee-saved local there (for host code
+  or a callee's input) puts back what it found on entry when it returns.
+- Each local starts as the context has it, so a path the analysis missed
+  (a jump over the first write) still reads the context's value, and the
+  __save helpers are still called: the frame holds the caller's registers
+  and the link register for a restore in a split-off part of the function,
+  or for host code reading the stack.
 
     python scripts/localize_registers.py out/recomp/diagnostic out/recomp/diagnostic-local
 
@@ -66,13 +74,18 @@ REFERENCE = re.compile(r'\bctx\.(r[0-9]+|f[0-9]+|v[0-9]+|cr[0-7]|ctr|xer|reserve
 PROLOGUE = '\tPPC_FUNC_PROLOGUE();'
 CALL = re.compile(r'^(\t+)([A-Za-z_][A-Za-z0-9_]*)\(ctx, base\);(\r?)$', re.MULTILINE)
 INDIRECT = re.compile(r'^(\t+).*\bPPC_CALL_INDIRECT_FUNC\(', re.MULTILINE)
-HOST_HELPER = re.compile(r'^(\t+).*\bsfr::([a-z_0-9]+)\(ctx\b', re.MULTILINE)
+# A helper taking the whole context (not one of its registers, as sfr::addc does).
+HOST_HELPER = re.compile(r'^(\t+).*\bsfr::([a-z_0-9]+)\(ctx[,)]', re.MULTILINE)
 CONDITIONAL_STORE = re.compile(r'^\t+.*\bsfr::store_conditional_(?:word|doubleword)\(ctx\b.*$', re.MULTILINE)
 SAVE_REST = re.compile(r'^__(save|rest)(gprlr|fpr|vmx)_(\d+)$')
 # sfr:: helpers taking the context that read none of the guest caller's
 # registers beyond r1, r13 and the link register (or only write cr0).
 PURE_HELPERS = {'enter_function', 'unsupported_function', 'load_reserved_word', 'load_reserved_doubleword',
                 'store_conditional_word', 'store_conditional_doubleword'}
+# Functions host code inspects while they run, left as they are: the video
+# global's import variable handler reads r31 and the link register the
+# function's __savegprlr stored (diagnostic_main.cpp, 0x82000664).
+OPAQUE_FUNCTIONS = {'sub_824F19E8'}
 # A full write: the whole register assigned from an expression.
 FULL_WRITE = {
     'r': re.compile(r'^\s*ctx\.(r[0-9]+)\.(?:u64|s64) = (.*)$'),
@@ -179,7 +192,7 @@ def localize(sources, hooks=frozenset()):
     every_input = set().union(*inputs.values()) if inputs else set()
     report = {'functions': len(functions), 'localized_functions': 0, 'localized_registers': 0,
               'kept_in_context': 0, 'helper_calls_removed': 0, 'helper_calls_kept': 0,
-              'call_syncs': 0, 'host_syncs': 0, 'opaque_functions': 0, 'inputs_outside_convention': {}}
+              'call_syncs': 0, 'host_syncs': 0, 'opaque_functions': 0, 'restoring_functions': 0, 'inputs_outside_convention': {}}
 
     def transform(name, body):
         referenced, _ = analysed[name]
@@ -190,7 +203,7 @@ def localize(sources, hooks=frozenset()):
         # slots, one of them where __savegprlr keeps the link register) is left
         # exactly as it is: its registers stay in the context and its helpers
         # still fill the frame.
-        if any(match[2] not in PURE_HELPERS for match in HOST_HELPER.finditer(body)):
+        if name in OPAQUE_FUNCTIONS or any(match[2] not in PURE_HELPERS for match in HOST_HELPER.finditer(body)):
             report['opaque_functions'] += 1
             return body
         kept = referenced & inputs[name]
@@ -204,8 +217,12 @@ def localize(sources, hooks=frozenset()):
         report['localized_registers'] += len(local)
         out = REFERENCE.sub(lambda m: m[1] if m[1] in local else m[0], body)
         nonvolatile = sorted(local & NONVOLATILE_GPR, key=lambda r: int(r[1:]))
+        # The callee-saved registers this function stores to the context for
+        # code it calls: its caller finds them as they were on return.
+        stored = set()
 
         def sync(indent, registers, newline):
+            stored.update(register for register in registers if callee_saved(register))
             return ''.join(f'{indent}ctx.{r} = {r};{newline}\n' for r in registers)
 
         def back(indent, registers, newline):
@@ -219,11 +236,20 @@ def localize(sources, hooks=frozenset()):
                 indent, callee, newline = call.groups()
                 moved = helper_range(callee)
                 if moved is not None:
-                    if not (moved & (kept | inputs[name])):
+                    # The saves stay: they read the context's callee-saved
+                    # registers, which are the caller's still, and fill the
+                    # frame (the link register too) for whatever reads it: a
+                    # restore in a part of the function XenonRecomp split off,
+                    # or host code looking at the stack.
+                    saving = callee.startswith('__save')
+                    if not saving and not (moved & (kept | inputs[name])):
                         report['helper_calls_removed'] += 1
                         continue
                     report['helper_calls_kept'] += 1
-                    result.append(line)
+                    # r12 (the link register, or where the vector and float
+                    # registers go) and r11, whatever the helper's own analysis.
+                    registers = sorted(({'r11', 'r12'} | inputs.get(callee, set())) & local)
+                    result.append(sync(indent, registers, newline) + line)
                     continue
                 target = callee
                 if target in functions and callee not in hooks:
@@ -264,17 +290,28 @@ def localize(sources, hooks=frozenset()):
                     result.append(f'{indent}cr0.so = xer.so;{newline}')
         out = '\n'.join(result)
 
-        def declaration(register):
+        def type_of(register):
             family = kind(register)
-            if family == 'cr':
-                return f'\tPPCCRRegister {register}{{}};'
-            return f'\t{SPECIAL_TYPES.get(register) or TYPES[family]} {register}{{}};'
+            return 'PPCCRRegister' if family == 'cr' else SPECIAL_TYPES.get(register) or TYPES[family]
 
+        # Each local starts as the context has it: a path the analysis does
+        # not see (a jump over the first write) still reads what the context
+        # held, and a frame save stores the caller's value. The compiler drops
+        # the load wherever every path writes first.
         order = sorted(local, key=lambda r: (kind(r), int(r.lstrip('rfvc') or 0) if r[-1].isdigit() else 0, r))
-        declarations = '\n'.join(declaration(register) for register in order)
+        declarations = [f'\t{type_of(register)} {register} = ctx.{register};' for register in order]
+        if stored:
+            report['restoring_functions'] += 1
+            saved = sorted(stored, key=lambda r: (kind(r), int(r[1:])))
+            members = ' '.join(f'{type_of(register)} {register};' for register in saved)
+            restores = ' '.join(f'c.{register} = {register};' for register in saved)
+            values = ', '.join(f'ctx.{register}' for register in saved)
+            declarations.append(f'\tstruct SfrRestore {{ PPCContext& c; {members} '
+                                f'~SfrRestore() {{ {restores} }} }} sfr_restore{{ctx, {values}}};')
+        newline = '\r' if PROLOGUE + '\r' in out else ''
         if out.count(PROLOGUE) != 1:
             raise ValueError(f'{name}: missing or duplicate prologue')
-        return out.replace(PROLOGUE, PROLOGUE + '\n' + declarations, 1)
+        return out.replace(PROLOGUE, PROLOGUE + ''.join(f'{newline}\n{line}' for line in declarations), 1)
 
     transformed = {}
     for filename, source in sources.items():
