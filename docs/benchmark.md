@@ -57,6 +57,7 @@ cd C:\Users\<你>\Documents\free-riders-recompiled
 | `vulkan` | `SFR_GRAPHICS=vulkan` | Vulkan 對 Direct3D 12 |
 | `held` | `SFR_PARALLEL_HELD=1` | 哪些 import／hook 讓脫離的客體執行緒回到全域許可、每格持有多久（`summary.md` 最後一張表） |
 | `main-spin` | `SFR_MAIN_SPIN_US=1000` | 主執行緒排隊時先原地等待最多 1 ms 再睡，省掉被作業系統重新排上 CPU 的延遲 |
+| `profile` | `SFR_MAIN_PROFILE=1`、`SFR_PROFILE_AFTER=12200` | 比賽中每 1 ms 取樣主執行緒執行到哪裡；`profile.md` 依目的檔分類（遊戲生成碼、客體記憶體存取、畫圖、排程、系統與等待）並列出最熱的函式（`scripts/profile_summary.py`，需要建置時產生的 `sfr_cpu_diagnostic.map`，會複製到結果資料夾） |
 
 ## 怎麼走到比賽
 
