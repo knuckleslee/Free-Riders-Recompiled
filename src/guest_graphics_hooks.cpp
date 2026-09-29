@@ -412,7 +412,11 @@ SFR_HOOK(sub_824E65A0) {
               << " main_blockers=" << permit_holders(execution_work[0].main_ready_by_owner_ns);
     for(size_t core=0;core<6;++core)
         present_log << " core" << core << "_holders=" << permit_holders(execution_work[core+1].held_ns);
-    present_log << " presented=1 seconds="
+    // [83E52F8C] is the title's race flag (docs/pad-menus.md): a benchmark
+    // (scripts/benchmark.ps1) measures only the frames of a race.
+    const bool racing=sfr::active_memory && sfr::active_memory->readable(0x83E52F8C,4) &&
+                      sfr::active_memory->load<uint32_t>(0x83E52F8C)!=0;
+    present_log << " racing=" << racing << " presented=1 seconds="
               << std::chrono::duration<double>(std::chrono::steady_clock::now()-process_start).count() << '\n';
     std::cerr << present_log.str();
     frame_draws=frame_textured_draws=foreign_draws=0;

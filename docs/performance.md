@@ -1,5 +1,7 @@
 # 比賽畫面的速度：量到的成本分布
 
+在自己的機器上重跑比較：[無人操作的比賽基準](benchmark.md)（`scripts/benchmark.ps1`）。
+
 日期：2026-09-21。分支 `claude/function-boundaries`。
 
 ## 2026-09-21：Free Race 從 1.6 fps 到 8.4 fps
