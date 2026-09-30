@@ -15,6 +15,7 @@ namespace plume { struct RenderShader; struct RenderBuffer; }
 namespace sfr {
 class GuestMemory;
 class NativeGraphics;
+struct ShaderCacheEntry;
 class NativePresentation;
 
 // Shared constants read by XenosRecomp shaders (cbuffer b2, space4): texture
@@ -65,6 +66,14 @@ struct NativeDraw {
     std::span<const uint8_t> palette;
     const plume::RenderShader* vertex_shader = nullptr;
     const plume::RenderShader* pixel_shader = nullptr;
+    // Where the shaders came from, for the pipeline manifest (a pipeline is
+    // written down by what they are, not by where they sit in memory this run).
+    // pixel_link: the constants a D3D12 pixel shader was linked with, when it
+    // is one of those (NativeRenderer::specialized), else pixel_linked is false.
+    const ShaderCacheEntry* vertex_entry = nullptr;
+    const ShaderCacheEntry* pixel_entry = nullptr;
+    uint32_t pixel_link = 0;
+    bool pixel_linked = false;
     // Vulkan: the pixel shader's specialization constant (constant_id 0),
     // set in its pipeline; D3D12 links it into the shader instead.
     uint32_t pixel_spec_constants = 0;
@@ -94,6 +103,11 @@ public:
 
     // Links a specialization-library pixel shader with the given constants.
     const plume::RenderShader* specialized(const ShaderCacheEntry& entry, uint32_t spec_constants);
+    // Tells the renderer a native shader exists (the title created it), so the
+    // pipelines an earlier run recorded for it can be built in the background
+    // once both of theirs are known. shader is null for a D3D12 pixel shader
+    // with specialization constants, which is linked per use instead.
+    void note_shader(const ShaderCacheEntry& entry, const plume::RenderShader* shader);
     // Descriptor index of the texture described by a fetch constant, uploading
     // it from guest memory the first time. Returns a null descriptor when unbound.
     uint32_t texture(GuestMemory& memory, const FetchWords& words);

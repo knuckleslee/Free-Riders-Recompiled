@@ -726,6 +726,10 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
     // Vulkan creates every pixel shader and specializes its pipeline; D3D12
     // links a specialized shader per constant value.
     draw.pixel_shader=ps.shader?ps.shader.get():graphics().renderer().specialized(*ps.entry,alpha_test?2u:0u);
+    draw.vertex_entry=vs.entry;
+    draw.pixel_entry=ps.entry;
+    draw.pixel_linked=!ps.shader;
+    draw.pixel_link=ps.shader?0u:(alpha_test?2u:0u);
     draw.pixel_spec_constants=vulkan?(alpha_test?2u:0u)&ps.entry->specialization_mask:0u;
 
     // Skinning palette: a vertex shader that fetches bone matrices reads them

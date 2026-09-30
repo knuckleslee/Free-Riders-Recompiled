@@ -1,5 +1,6 @@
 #include "native_renderer.h"
 #include "native_pipeline_key.h"
+#include "native_pipeline_manifest.h"
 #ifdef _WIN32
 #include "plume_d3d12.h"
 #endif
@@ -15,15 +16,20 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
+#include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -260,6 +266,187 @@ struct NativeRenderer::Impl {
         }
     };
     std::unordered_map<std::vector<uint8_t>, std::unique_ptr<plume::RenderPipeline>, KeyHash> pipelines;
+    // Builds a pipeline from a draw's state (the shaders are in it).
+    std::unique_ptr<plume::RenderPipeline> create_pipeline(const NativeDraw& draw) {
+        const std::array<plume::RenderInputSlot, 2> slots{plume::RenderInputSlot(0, draw.stride),
+                                                           plume::RenderInputSlot(zero_slot, 0)};
+        plume::RenderGraphicsPipelineDesc desc;
+        desc.pipelineLayout = layout.get();
+        desc.vertexShader = draw.vertex_shader;
+        desc.pixelShader = draw.pixel_shader;
+        const plume::RenderSpecConstant spec(0, draw.pixel_spec_constants);
+        if (draw.pixel_spec_constants) {
+            desc.specConstants = &spec;
+            desc.specConstantsCount = 1;
+        }
+        desc.primitiveTopology = draw.topology;
+        desc.cullMode = draw.cull;
+        desc.depthEnabled = draw.depth_enabled;
+        desc.depthWriteEnabled = draw.depth_write;
+        desc.depthFunction = draw.depth_function;
+        desc.stencilEnabled = draw.stencil_enabled;
+        if (draw.stencil_enabled) {
+            desc.stencilReference = draw.stencil_reference;
+            desc.stencilReadMask = draw.stencil_read_mask;
+            desc.stencilWriteMask = draw.stencil_write_mask;
+            desc.stencilFrontFace = draw.stencil_front;
+            desc.stencilBackFace = draw.stencil_back;
+        }
+        desc.depthTargetFormat = plume::RenderFormat::D32_FLOAT_S8_UINT;
+        desc.renderTargetCount = 1;
+        desc.renderTargetFormat[0] = plume::RenderFormat::B8G8R8A8_UNORM;
+        desc.renderTargetBlend[0] = draw.blend.description(draw.write_mask);
+        desc.inputSlots = slots.data();
+        desc.inputSlotsCount = uint32_t(slots.size());
+        desc.inputElements = draw.elements.data();
+        desc.inputElementsCount = uint32_t(draw.elements.size());
+        return graphics.device().createGraphicsPipeline(desc);
+    }
+
+    // The pipelines an earlier run needed (a manifest next to the driver's
+    // pipeline cache) are built on background threads as the title creates the
+    // shaders they use, and taken by the first draw that asks for one, so that
+    // draw does not stall the frame compiling it. SFR_PIPELINE_PREWARM=0 keeps
+    // the manifest but builds nothing ahead; SFR_PIPELINE_MANIFEST=0 turns
+    // both off.
+    bool manifest_enabled = true, prewarm_enabled = true;
+    std::filesystem::path manifest_path;
+    std::unordered_set<std::string> manifest_known;      // records on disk or waiting to be written
+    std::vector<std::vector<uint8_t>> manifest_pending;
+    std::chrono::steady_clock::time_point manifest_written = std::chrono::steady_clock::now();
+    std::unordered_map<const ShaderCacheEntry*, uint64_t> entry_identities;  // main thread only
+    struct ShaderRef { const ShaderCacheEntry* entry = nullptr; const plume::RenderShader* shader = nullptr; };
+    std::mutex prewarm_mutex;  // everything below, and the workers' wait
+    std::unordered_map<uint64_t, ShaderRef> shader_refs;
+    struct Waiting { std::vector<uint8_t> record; uint64_t vertex = 0, pixel = 0; bool queued = false; };
+    std::vector<Waiting> waiting;
+    std::unordered_multimap<uint64_t, size_t> waiting_by_shader;
+    std::deque<size_t> jobs;
+    std::condition_variable job_ready;
+    bool prewarm_stop = false;
+    std::vector<std::thread> prewarm_threads;
+    std::unordered_map<std::vector<uint8_t>, std::unique_ptr<plume::RenderPipeline>, KeyHash> prewarmed;
+    std::atomic<uint32_t> prewarm_built{0}, prewarm_failed{0};
+    uint32_t prewarm_adopted = 0, prewarm_reported = ~0u;
+    std::mutex link_mutex;  // specialized(): the linker and its table are shared with the workers
+
+    uint64_t identity_of(const ShaderCacheEntry& entry) {
+        auto [at, inserted] = entry_identities.try_emplace(&entry, 0);
+        if (inserted) at->second = shader_identity(entry.source);
+        return at->second;
+    }
+    std::unique_ptr<plume::RenderPipeline> take_prewarmed(const std::vector<uint8_t>& key) {
+        if (!prewarm_enabled) return nullptr;
+        std::lock_guard lock(prewarm_mutex);
+        const auto found = prewarmed.find(key);
+        if (found == prewarmed.end()) return nullptr;
+        auto pipeline = std::move(found->second);
+        prewarmed.erase(found);
+        ++prewarm_adopted;
+        return pipeline;
+    }
+    void record_manifest(const NativeDraw& draw) {
+        if (!manifest_enabled || !draw.vertex_entry || !draw.pixel_entry) return;
+        const PipelineShaders shaders{identity_of(*draw.vertex_entry), identity_of(*draw.pixel_entry),
+                                      draw.pixel_link, draw.pixel_linked};
+        auto record = serialize_pipeline_record(draw, shaders);
+        if (record.empty()) return;
+        if (manifest_known.emplace(record.begin(), record.end()).second) manifest_pending.push_back(std::move(record));
+    }
+    void write_manifest(bool force) {
+        if (manifest_pending.empty()) return;
+        const auto now = std::chrono::steady_clock::now();
+        if (!force && now - manifest_written < std::chrono::seconds(3)) return;
+        manifest_written = now;
+        if (append_pipeline_manifest(manifest_path, manifest_pending)) manifest_pending.clear();
+    }
+    const plume::RenderShader* link_pixel(const ShaderCacheEntry& entry, uint32_t spec_constants);
+    void prewarm_one(NativeDraw& draw, size_t index) {
+        PipelineShaders shaders;
+        std::vector<uint8_t> record;
+        ShaderRef vertex, pixel;
+        {
+            std::lock_guard lock(prewarm_mutex);
+            record = waiting[index].record;
+            if (!deserialize_pipeline_record(record, draw, shaders)) { ++prewarm_failed; return; }
+            vertex = shader_refs[shaders.vertex];
+            pixel = shader_refs[shaders.pixel];
+        }
+        draw.vertex_shader = vertex.shader;
+        draw.pixel_shader = shaders.pixel_linked ? link_pixel(*pixel.entry, shaders.pixel_link) : pixel.shader;
+        if (!draw.vertex_shader || !draw.pixel_shader) { ++prewarm_failed; return; }
+        std::vector<uint8_t> key;
+        native_pipeline_key_bulk(draw, key);
+        {
+            std::lock_guard lock(prewarm_mutex);
+            if (prewarmed.contains(key)) return;
+        }
+        auto pipeline = create_pipeline(draw);
+        if (!pipeline) { ++prewarm_failed; return; }
+        {
+            std::lock_guard lock(prewarm_mutex);
+            prewarmed.emplace(std::move(key), std::move(pipeline));
+        }
+        ++prewarm_built;
+    }
+    void prewarm_loop() {
+        auto draw = std::make_unique<NativeDraw>();
+        for (;;) {
+            size_t index;
+            {
+                std::unique_lock lock(prewarm_mutex);
+                job_ready.wait(lock, [&] { return prewarm_stop || !jobs.empty(); });
+                if (prewarm_stop) return;
+                index = jobs.front();
+                jobs.pop_front();
+            }
+            try {
+                *draw = NativeDraw{};
+                prewarm_one(*draw, index);
+            } catch (const std::exception& error) {
+                ++prewarm_failed;
+                std::cerr << "NATIVE_PIPELINE_PREWARM failed: " << error.what() << '\n';
+            } catch (...) {
+                ++prewarm_failed;
+            }
+        }
+    }
+    void stop_prewarm() {
+        {
+            std::lock_guard lock(prewarm_mutex);
+            prewarm_stop = true;
+        }
+        job_ready.notify_all();
+        for (auto& thread : prewarm_threads) if (thread.joinable()) thread.join();
+        prewarm_threads.clear();
+    }
+    void load_manifest() {
+        const char* const off = std::getenv("SFR_PIPELINE_MANIFEST");
+        manifest_enabled = !off || *off != '0';
+        const char* const warm = std::getenv("SFR_PIPELINE_PREWARM");
+        prewarm_enabled = manifest_enabled && (!warm || *warm != '0');
+        if (!manifest_enabled) return;
+        const char* const directory = std::getenv("SFR_PIPELINE_CACHE_PATH");
+        // Beside the driver's cache file, one per backend: the records are
+        // backend-independent but the shaders they name are not.
+        const auto base = directory && *directory ? std::filesystem::u8path(directory).parent_path()
+                                                  : std::filesystem::path("pipeline-cache");
+        manifest_path = base / (graphics.backend() == GraphicsBackend::vulkan ? "pipelines-vulkan.bin"
+                                                                               : "pipelines-d3d12.bin");
+        auto records = load_pipeline_manifest(manifest_path);
+        for (auto& record : records) {
+            manifest_known.emplace(record.begin(), record.end());
+            if (!prewarm_enabled) continue;
+            NativeDraw probe;
+            PipelineShaders shaders;
+            if (!deserialize_pipeline_record(record, probe, shaders)) continue;
+            waiting_by_shader.emplace(shaders.vertex, waiting.size());
+            if (shaders.pixel != shaders.vertex) waiting_by_shader.emplace(shaders.pixel, waiting.size());
+            waiting.push_back({std::move(record), shaders.vertex, shaders.pixel, false});
+        }
+        std::cerr << "NATIVE_PIPELINE_MANIFEST path=" << manifest_path.generic_string() << " records="
+                  << manifest_known.size() << " prewarm=" << prewarm_enabled << '\n';
+    }
     // Texture uploads are submitted without waiting, so their command lists
     // rotate: a list is only recorded again once the submission that used it
     // has finished. Four is more than a frame's uploads have ever needed.
@@ -331,6 +518,7 @@ struct NativeRenderer::Impl {
 
 NativeRenderer::NativeRenderer(NativeGraphics& graphics, NativePresentation& presentation)
     : impl_(std::make_unique<Impl>(graphics, presentation)) {
+    impl_->load_manifest();
     auto& device = graphics.device();
     plume::RenderPipelineLayoutBuilder layout;
     layout.begin(false, true);
@@ -444,6 +632,8 @@ NativeRenderer::NativeRenderer(NativeGraphics& graphics, NativePresentation& pre
 }
 
 NativeRenderer::~NativeRenderer() {
+    impl_->stop_prewarm();
+    try { impl_->write_manifest(true); } catch (...) {}
     // Complete recorded draws while their upload ring and textures still exist.
     try { impl_->presentation.flush(); } catch (...) {}
     impl_->presentation.clear_after_flush();
@@ -455,6 +645,16 @@ NativeRenderer::PipelineWork NativeRenderer::take_pipeline_work() noexcept {
                             impl_->ring_flushes, impl_->textures_uploaded, impl_->texture_ms};
     impl_->pipelines_created = 0;
     impl_->pipeline_ms = 0;
+    try { impl_->write_manifest(false); } catch (...) {}
+    // One line per change: how far the background builds have got, and how
+    // many of them a draw has taken (the rest were built for nothing, or are
+    // yet to be asked for).
+    const uint32_t built = impl_->prewarm_built.load(std::memory_order_relaxed) + impl_->prewarm_adopted * 1000u;
+    if (impl_->prewarm_enabled && built != impl_->prewarm_reported) {
+        impl_->prewarm_reported = built;
+        std::cerr << "NATIVE_PIPELINE_PREWARM built=" << impl_->prewarm_built.load() << " adopted="
+                  << impl_->prewarm_adopted << " failed=" << impl_->prewarm_failed.load() << '\n';
+    }
     impl_->ring_flushes = 0;
     impl_->textures_uploaded = 0;
     impl_->texture_ms = 0;
@@ -521,20 +721,54 @@ std::span<uint8_t> NativeRenderer::vertex_space(uint64_t bytes, uint64_t index_b
     return {at, size_t(bytes)};
 }
 
-const plume::RenderShader* NativeRenderer::specialized(const ShaderCacheEntry& entry, uint32_t spec_constants) {
+const plume::RenderShader* NativeRenderer::Impl::link_pixel(const ShaderCacheEntry& entry, uint32_t spec_constants) {
     spec_constants &= entry.specialization_mask;
     const uint64_t key = (uint64_t(reinterpret_cast<uintptr_t>(entry.dxil.data())) << 8) ^ spec_constants;
-    auto& shader = impl_->linked[key];
+    std::lock_guard lock(link_mutex);
+    auto& shader = linked[key];
     if (!shader) {
 #ifdef _WIN32
-        if (!impl_->dxc) impl_->dxc = std::make_unique<DxcLinker>();
-        const auto bytes = impl_->dxc->link(entry.dxil, spec_constants);
-        shader = impl_->graphics.device().createShader(bytes.data(), bytes.size(), "shaderMain",
-                                                       plume::RenderShaderFormat::DXIL);
+        if (!dxc) dxc = std::make_unique<DxcLinker>();
+        const auto bytes = dxc->link(entry.dxil, spec_constants);
+        shader = graphics.device().createShader(bytes.data(), bytes.size(), "shaderMain",
+                                                plume::RenderShaderFormat::DXIL);
 #endif
         if (!shader) unsupported(spec_constants, "linked pixel shader creation failed");
     }
     return shader.get();
+}
+
+const plume::RenderShader* NativeRenderer::specialized(const ShaderCacheEntry& entry, uint32_t spec_constants) {
+    return impl_->link_pixel(entry, spec_constants);
+}
+
+void NativeRenderer::note_shader(const ShaderCacheEntry& entry, const plume::RenderShader* shader) {
+    if (!impl_->prewarm_enabled) return;
+    const uint64_t id = impl_->identity_of(entry);
+    bool queued = false;
+    {
+        std::lock_guard lock(impl_->prewarm_mutex);
+        impl_->shader_refs[id] = {&entry, shader};
+        const auto [first, last] = impl_->waiting_by_shader.equal_range(id);
+        for (auto at = first; at != last; ++at) {
+            auto& record = impl_->waiting[at->second];
+            if (record.queued || !impl_->shader_refs.contains(record.vertex) || !impl_->shader_refs.contains(record.pixel))
+                continue;
+            record.queued = true;
+            impl_->jobs.push_back(at->second);
+            queued = true;
+        }
+    }
+    if (!queued) return;
+    if (impl_->prewarm_threads.empty()) {
+        // Builds overlap the title's own loading; leave it the rest of the machine.
+        const unsigned cores = (std::max)(1u, std::thread::hardware_concurrency());
+        const char* const text = std::getenv("SFR_PIPELINE_PREWARM_THREADS");
+        const unsigned wanted = text ? unsigned(std::strtoul(text, nullptr, 10)) : (std::min)(3u, (std::max)(1u, cores / 4));
+        for (unsigned i = 0; i < (std::max)(1u, wanted); ++i)
+            impl_->prewarm_threads.emplace_back([impl = impl_.get()] { impl->prewarm_loop(); });
+    }
+    impl_->job_ready.notify_all();
 }
 
 // One flat white texture for formats without a native layout (investigation).
@@ -883,45 +1117,15 @@ void NativeRenderer::draw(const NativeDraw& draw) {
         last_key = key;
     }
     auto& pipeline = *last_pipeline;
-    const std::array<plume::RenderInputSlot, 2> slots{plume::RenderInputSlot(0, draw.stride),
-                                                       plume::RenderInputSlot(zero_slot, 0)};
+    if (!pipeline) pipeline = impl_->take_prewarmed(key);
     if (!pipeline) {
         const auto pipeline_start = std::chrono::steady_clock::now();
-        plume::RenderGraphicsPipelineDesc desc;
-        desc.pipelineLayout = impl_->layout.get();
-        desc.vertexShader = draw.vertex_shader;
-        desc.pixelShader = draw.pixel_shader;
-        const plume::RenderSpecConstant spec(0, draw.pixel_spec_constants);
-        if (draw.pixel_spec_constants) {
-            desc.specConstants = &spec;
-            desc.specConstantsCount = 1;
-        }
-        desc.primitiveTopology = draw.topology;
-        desc.cullMode = draw.cull;
-        desc.depthEnabled = draw.depth_enabled;
-        desc.depthWriteEnabled = draw.depth_write;
-        desc.depthFunction = draw.depth_function;
-        desc.stencilEnabled = draw.stencil_enabled;
-        if (draw.stencil_enabled) {
-            desc.stencilReference = draw.stencil_reference;
-            desc.stencilReadMask = draw.stencil_read_mask;
-            desc.stencilWriteMask = draw.stencil_write_mask;
-            desc.stencilFrontFace = draw.stencil_front;
-            desc.stencilBackFace = draw.stencil_back;
-        }
-        desc.depthTargetFormat = plume::RenderFormat::D32_FLOAT_S8_UINT;
-        desc.renderTargetCount = 1;
-        desc.renderTargetFormat[0] = plume::RenderFormat::B8G8R8A8_UNORM;
-        desc.renderTargetBlend[0] = draw.blend.description(draw.write_mask);
-        desc.inputSlots = slots.data();
-        desc.inputSlotsCount = uint32_t(slots.size());
-        desc.inputElements = draw.elements.data();
-        desc.inputElementsCount = uint32_t(draw.elements.size());
-        pipeline = device.createGraphicsPipeline(desc);
+        pipeline = impl_->create_pipeline(draw);
         if (!pipeline) unsupported(0, "native graphics pipeline creation failed");
         ++impl_->pipelines_created;
         impl_->pipeline_ms += std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - pipeline_start).count();
+        impl_->record_manifest(draw);
     }
 
     // Per-draw upload: vertices, then the three constant buffers (256-aligned).

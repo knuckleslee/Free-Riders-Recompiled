@@ -162,7 +162,12 @@ uint32_t GuestGraphics::discard_commands(uint32_t device, uint32_t& discarded_by
 }
 uint32_t GuestGraphics::create_shader(ShaderStage stage,uint32_t container) {
     if(!impl_) unsupported(container,"native guest device is not created");
-    return impl_->shaders->create(stage,container);
+    const auto handle=impl_->shaders->create(stage,container);
+    // The renderer builds pipelines an earlier run recorded as soon as both
+    // their shaders exist (NativeRenderer::note_shader).
+    const auto& shader=impl_->shaders->get(handle);
+    renderer().note_shader(*shader.entry,shader.shader.get());
+    return handle;
 }
 void GuestGraphics::attach_shader(uint32_t handle, uint32_t object) {
     if(!impl_) unsupported(object,"native guest device is not created");

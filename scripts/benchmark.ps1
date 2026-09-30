@@ -57,6 +57,9 @@ $settings = @{
     # draws are recorded on the main thread again (baseline queues them for the
     # render thread: NativePresentation::record_async)
     'no-render-thread' = @{ SFR_RENDER_THREAD = '0' }
+    # pipelines are only built when a draw first needs them, as before (the
+    # manifest is still written: NativeRenderer::Impl::load_manifest)
+    'no-prewarm'   = @{ SFR_PIPELINE_PREWARM = '0' }
     'vulkan'       = @{ SFR_GRAPHICS = 'vulkan' }
     # baseline, reporting why detached guests come back to the global permit
     # and how long they hold it (PARALLEL_HELD, summed in summary.md)

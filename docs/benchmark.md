@@ -59,6 +59,7 @@ cd C:\Users\<你>\Documents\free-riders-recompiled
 | `main-spin` | `SFR_MAIN_SPIN_US=1000` | 主執行緒排隊時先原地等待最多 1 ms 再睡，省掉被作業系統重新排上 CPU 的延遲 |
 | `strict-memory` | `SFR_STRICT_MEMORY=1` | 一般寫入照舊檢查「自己的保留中」與「非同步讀檔的輸出範圍」；baseline 從 A1 起不檢查（`GuestMemory::strict_stores`） |
 | `no-render-thread` | `SFR_RENDER_THREAD=0` | 繪製指令改回在主執行緒錄進命令列表；baseline 從 C 起把它們丟給渲染執行緒錄（`NativePresentation::record_async`） |
+| `no-prewarm` | `SFR_PIPELINE_PREWARM=0` | 不在背景預先建 pipeline，遇到第一個要用的 draw 才建（仍會寫 manifest） |
 | `profile` | `SFR_MAIN_PROFILE=1`、`SFR_PROFILE_AFTER=12200` | 比賽中每 1 ms 取樣主執行緒執行到哪裡；`profile.md` 依目的檔分類（遊戲生成碼、客體記憶體存取、畫圖、排程、系統與等待）並列出最熱的函式（`scripts/profile_summary.py`，需要建置時產生的 `sfr_cpu_diagnostic.map`，會複製到結果資料夾） |
 
 ## 怎麼走到比賽
@@ -287,3 +288,39 @@ py scripts\localize_registers.py out\recomp\diagnostic out\recomp\diagnostic-loc
 佇列的睡眠／喚醒邏輯抽出來在 Linux 上壓測（200 輪 × 20000 筆，穿插
 `drain()` 與睡眠，g++ 執行緒檢查器），順序與筆數正確、沒有死結。
 真正的 D3D12／Vulkan 錄製路徑這裡沒有 GPU，只做過編譯，需要在 PC 上跑。
+
+## 預先建立 pipeline（階段 D）
+
+問題：pipeline 是第一個用到它的 draw 才建，那一格會頓一下；Windows 預設走 D3D12，
+而磁碟上的 pipeline cache（`native_pipeline_cache.cpp`）只有 Vulkan 有，所以
+D3D12 每次啟動都從零開始建。
+
+做法（`native_pipeline_manifest.*`、`NativeRenderer`）：
+
+- 每建立一條 pipeline 就記一筆到 `pipeline-cache/pipelines-<d3d12|vulkan>.bin`
+  （附加寫入，每 3 秒最多寫一次，結束時再寫一次）。一筆記錄只包含 pipeline 的
+  完整描述：著色器用「原始 container 的雜湊」表示、頂點語意用 usage 編號、
+  列舉用數值；不含常數與頂點。
+- 下次啟動讀入 manifest。遊戲每建立一個著色器（`GuestGraphics::create_shader` →
+  `NativeRenderer::note_shader`），只要某筆記錄用到的兩個著色器都到齊，就丟給
+  背景執行緒（預設 `min(3, 核心數/4)` 條）建好，放進 `prewarmed` 表。
+- 第一個需要該 pipeline 的 draw 在原本「查不到才建」的路徑上先看 `prewarmed`，
+  有就直接拿走，不必當場編譯。D3D12 有特化常數的 pixel shader 由背景執行緒用
+  DXC 連結（`link_pixel` 現在有鎖）。
+- 鍵（key）改成不含 padding：blend 與 stencil 描述原本整個物件位元組寫進去，
+  padding 內容不固定，同樣的狀態可能得到不同的鍵，預先建好的 pipeline 就找不到。
+  現在逐欄位寫入（`native_pipeline_key.h`，legacy 與 bulk 同步修改，測試涵蓋）。
+- 環境變數：`SFR_PIPELINE_MANIFEST=0` 全部關閉；`SFR_PIPELINE_PREWARM=0` 只記錄
+  不預建；`SFR_PIPELINE_PREWARM_THREADS=N` 指定背景執行緒數。
+- log：`NATIVE_PIPELINE_MANIFEST`（載入筆數）、`NATIVE_PIPELINE_PREWARM built=… adopted=… failed=…`
+  （已建、被 draw 取用、失敗）。`adopted` 越接近該場景需要的數量、每格
+  `pipelines_created`／`pipeline_ms` 越接近 0，代表效果越好。
+
+第一次啟動（沒有 manifest）不會有任何改善，因為還不知道要建什麼；從第二次起有。
+要量測「第一印象」：刪掉 `pipeline-cache/` 再跑一次（冷），接著再跑一次（熱），
+比較兩次前段的 `pipelines_created` 與頓卡。發行版可以附上 manifest（只有著色器雜湊
+與狀態，不含遊戲資料）讓第一次啟動也受惠——這是下一步，見 `docs/roadmap.md`。
+
+驗證：manifest 的序列化、鍵一致性、檔案附加／截斷／異物檔案都有單元測試
+（`native_pipeline_manifest`）；實際的背景建立與取用路徑這裡沒有 GPU，只做過編譯，
+需要在 PC 上跑。
