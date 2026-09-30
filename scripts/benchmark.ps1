@@ -64,6 +64,9 @@ $settings = @{
     # draws are recorded on the main thread again (baseline queues them for the
     # render thread: NativePresentation::record_async)
     'no-render-thread' = @{ SFR_RENDER_THREAD = '0' }
+    # a self-suspended guest is woken by polling every 1 ms again, as before
+    # (baseline wakes it by notification: GuestThreads::suspension_waiter)
+    'no-suspend-notify' = @{ SFR_SUSPEND_NOTIFY = '0' }
     # pipelines are only built when a draw first needs them, as before (the
     # manifest is still written: NativeRenderer::Impl::load_manifest)
     'no-prewarm'   = @{ SFR_PIPELINE_PREWARM = '0' }

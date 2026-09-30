@@ -59,6 +59,7 @@ cd C:\Users\<你>\Documents\free-riders-recompiled
 | `main-spin` | `SFR_MAIN_SPIN_US=1000` | 主執行緒排隊時先原地等待最多 1 ms 再睡，省掉被作業系統重新排上 CPU 的延遲 |
 | `strict-memory` | `SFR_STRICT_MEMORY=1` | 一般寫入照舊檢查「自己的保留中」與「非同步讀檔的輸出範圍」；baseline 從 A1 起不檢查（`GuestMemory::strict_stores`） |
 | `no-render-thread` | `SFR_RENDER_THREAD=0` | 繪製指令改回在主執行緒錄進命令列表；baseline 從 C 起把它們丟給渲染執行緒錄（`NativePresentation::record_async`） |
+| `no-suspend-notify` | `SFR_SUSPEND_NOTIFY=0` | 自我暫停的客體改回每 1 ms 輪詢；baseline 用通知喚醒（取自作者 `5653352`，尚未進 main） |
 | `no-prewarm` | `SFR_PIPELINE_PREWARM=0` | 不在背景預先建 pipeline，遇到第一個要用的 draw 才建（仍會寫 manifest） |
 | `profile` | `SFR_MAIN_PROFILE=1`、`SFR_PROFILE_AFTER=12200` | 比賽中每 1 ms 取樣主執行緒執行到哪裡；`profile.md` 依目的檔分類（遊戲生成碼、客體記憶體存取、畫圖、排程、系統與等待）並列出最熱的函式（`scripts/profile_summary.py`，需要建置時產生的 `sfr_cpu_diagnostic.map`，會複製到結果資料夾） |
 
