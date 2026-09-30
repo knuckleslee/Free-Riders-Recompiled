@@ -89,8 +89,9 @@ void write_framebuffer(const char* path) {
 // SFR_SCREENSHOT=<file.bmp>: write every 60th presented frame (a GPU readback
 // each frame would dominate the frame time); the last one written remains.
 void save_screenshot() {
-    static const char* const path=std::getenv("SFR_SCREENSHOT");
-    if(!path) return;
+    static const char* const configured=std::getenv("SFR_SCREENSHOT");
+    if(!configured) return;
+    const char* path=configured;
     static uint32_t presents=0;
     // SFR_SCREENSHOT_EVERY=N changes the interval (default 60 presents).
     static const uint32_t every=[]{ const char* t=std::getenv("SFR_SCREENSHOT_EVERY"); const long n=t?std::strtol(t,nullptr,10):60; return uint32_t(n>0?n:60); }();
