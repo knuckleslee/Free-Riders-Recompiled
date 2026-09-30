@@ -86,6 +86,11 @@ PURE_HELPERS = {'enter_function', 'unsupported_function', 'load_reserved_word', 
 # global's import variable handler reads r31 and the link register the
 # function's __savegprlr stored (diagnostic_main.cpp, 0x82000664).
 OPAQUE_FUNCTIONS = {'sub_824F19E8'}
+# Restore helpers an audit watches being entered, which stay called: the
+# unselected-user audit ends at __restgprlr_27 (0x82A560B4) right after the
+# name conversion returns (enter_function_observed). The other helper
+# addresses it names are SFR_DIAGNOSTIC_ENTRIES audits.
+KEPT_HELPERS = {'__restgprlr_27'}
 # Callee-saved registers host code reads when these run: an audit in an
 # import (diagnostic_main.cpp dispatch_import_owned) or at a function's entry
 # (enter_function_observed) looks at what a caller further up left in r30 or
@@ -258,7 +263,7 @@ def localize(sources, hooks=frozenset()):
                     # restore in a part of the function XenonRecomp split off,
                     # or host code looking at the stack.
                     saving = callee.startswith('__save')
-                    if not saving and not (moved & (kept | inputs[name])):
+                    if not saving and callee not in KEPT_HELPERS and not (moved & (kept | inputs[name])):
                         report['helper_calls_removed'] += 1
                         continue
                     report['helper_calls_kept'] += 1

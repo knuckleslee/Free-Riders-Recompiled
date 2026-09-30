@@ -152,6 +152,13 @@ class LocalizeRegistersTest(unittest.TestCase):
         self.assertIn('__savegprlr_30(ctx, base);', body)
         self.assertEqual(report['helper_calls_kept'], 2)
 
+    def test_a_restore_an_audit_watches_is_still_called(self):
+        result, report = self.run_one(function('sub_82000000', (
+            '\tctx.r12.u64 = ctx.lr;\n\t__savegprlr_27(ctx, base);\n\tctx.r31.u64 = ctx.r3.u64;\n'
+            '\t__restgprlr_27(ctx, base);\n\treturn;\n')))
+        self.assertIn('__restgprlr_27(ctx, base);', result['sub_82000000'])
+        self.assertEqual(report['helper_calls_removed'], 0)
+
     def test_vector_loads_write_their_register(self):
         result, _ = self.run_one(function('sub_82000000', (
             '\tsfr::load_vector_memory(uint32_t(ctx.r3.u32), ctx.v64.u8);\n'

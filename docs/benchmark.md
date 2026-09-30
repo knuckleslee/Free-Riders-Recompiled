@@ -237,6 +237,11 @@ XenonRecomp 能把 CR、CTR、XER、保留值，以及呼叫之間不必保留�
 就沒有在呼叫前存回 context。現在這類主機端讀取列在 `HOST_INPUTS`（兩個 import、顯示裝置全域變數，以及
 `SFR_DIAGNOSTIC_ENTRIES=1` 才開的幾個函式進入點稽核），算成那個函式的輸入，往上傳到真正持有值的函式。
 
+接著（commit 7a22eee）開機完成、進了選單，約 3400 格後同一個稽核誤報：它以「進入 `__restgprlr_27`
+（0x82A560B4，名稱轉換返回後的函式結尾）」當作結束的訊號，這個呼叫被刪掉了，稽核一直沒關。
+`KEPT_HELPERS` 讓它照舊呼叫。`SFR_DIAGNOSTIC_ENTRIES=1` 的稽核另外還看其他幾個 `__rest*` 的進入，
+仍不支援。
+
 用法（不必重跑 XenonRecomp）：
 
 ```powershell
