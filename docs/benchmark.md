@@ -58,6 +58,7 @@ cd C:\Users\<你>\Documents\free-riders-recompiled
 | `held` | `SFR_PARALLEL_HELD=1` | 哪些 import／hook 讓脫離的客體執行緒回到全域許可、每格持有多久（`summary.md` 最後一張表） |
 | `main-spin` | `SFR_MAIN_SPIN_US=1000` | 主執行緒排隊時先原地等待最多 1 ms 再睡，省掉被作業系統重新排上 CPU 的延遲 |
 | `strict-memory` | `SFR_STRICT_MEMORY=1` | 一般寫入照舊檢查「自己的保留中」與「非同步讀檔的輸出範圍」；baseline 從 A1 起不檢查（`GuestMemory::strict_stores`） |
+| `no-render-thread` | `SFR_RENDER_THREAD=0` | 繪製指令改回在主執行緒錄進命令列表；baseline 從 C 起把它們丟給渲染執行緒錄（`NativePresentation::record_async`） |
 | `profile` | `SFR_MAIN_PROFILE=1`、`SFR_PROFILE_AFTER=12200` | 比賽中每 1 ms 取樣主執行緒執行到哪裡；`profile.md` 依目的檔分類（遊戲生成碼、客體記憶體存取、畫圖、排程、系統與等待）並列出最熱的函式（`scripts/profile_summary.py`，需要建置時產生的 `sfr_cpu_diagnostic.map`，會複製到結果資料夾） |
 
 ## 怎麼走到比賽
@@ -266,3 +267,23 @@ py scripts\localize_registers.py out\recomp\diagnostic out\recomp\diagnostic-loc
 - 一般儲存略過保留／釘住檢查（非 strict）約值 3%。
 - 剖析：遊戲生成碼 37.0%、執行檔以外 29.6%、畫圖 17.4%、客體記憶體 5.8%。剩下的 `__savegprlr_*`
   約 1.3%，`load/store_vector_memory` 約 2.4%，`native_draw` 3.7%。
+
+## 渲染執行緒（階段 C）
+
+`NativeRenderer::draw` 原本在主執行緒算 pipeline key、把常數複製進上傳環，
+再把 `setPipeline`、描述符、`drawIndexedInstanced` 這些呼叫錄進命令列表
+（`record_ms`，約 1.5 ms／格）。現在最後一步交給另一條執行緒：
+
+- `NativePresentation::record_async` 把一個只擷取「值」的 lambda 複製進固定大小
+  （256 位元組）的佇列槽，連同當時的視埠／裁切與 `list_generation`；
+  佇列容量 4096，單一生產者、單一消費者，不配置記憶體。
+- 其他會碰命令列表的動作（`clear`、`record`、`present`、`flush`、開新列表、
+  `draw_player_model`、解構）都先 `drain()` 等佇列清空，所以指令順序不變。
+- 上傳環、紋理上傳與 pipeline 建立仍在主執行緒；GPU 看到的內容和順序與以前相同。
+- 渲染執行緒出錯時例外留到下一次 `record_async` 或 `drain()` 在主執行緒重新丟出。
+- `SFR_RENDER_THREAD=0` 關閉（同步執行，行為與舊版相同）；benchmark 用
+  `no-render-thread` 做 A/B。
+
+佇列的睡眠／喚醒邏輯抽出來在 Linux 上壓測（200 輪 × 20000 筆，穿插
+`drain()` 與睡眠，g++ 執行緒檢查器），順序與筆數正確、沒有死結。
+真正的 D3D12／Vulkan 錄製路徑這裡沒有 GPU，只做過編譯，需要在 PC 上跑。

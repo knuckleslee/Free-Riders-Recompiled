@@ -54,6 +54,9 @@ $settings = @{
     'render-every-2' = @{ SFR_RENDER_EVERY = '2' }             # a race drawn every other frame
     'no-vertex-cache' = @{ SFR_VERTEX_CACHE = '0' }
     'no-gpu-pipeline' = @{ SFR_GPU_PIPELINE = '0' }
+    # draws are recorded on the main thread again (baseline queues them for the
+    # render thread: NativePresentation::record_async)
+    'no-render-thread' = @{ SFR_RENDER_THREAD = '0' }
     'vulkan'       = @{ SFR_GRAPHICS = 'vulkan' }
     # baseline, reporting why detached guests come back to the global permit
     # and how long they hold it (PARALLEL_HELD, summed in summary.md)
