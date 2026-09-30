@@ -878,7 +878,8 @@ SFR_HOOK(sub_824578F0) {
     }
     // SFR_MENU_DUMP=1 reports each menu page: its buttons as type/flags/kind/state
     // and the player's current page, whenever they change (a debugging aid).
-    if(std::getenv("SFR_MENU_DUMP")) {
+    static const bool menu_dump=std::getenv("SFR_MENU_DUMP")!=nullptr;
+    if(menu_dump) {
         static std::string last;
         std::string line;
         for_each_menu_button(memory,manager,[&](uint32_t b) {

@@ -86,7 +86,7 @@ void write_framebuffer(const char* path) {
 // SFR_SCREENSHOT=<file.bmp>: write every 60th presented frame (a GPU readback
 // each frame would dominate the frame time); the last one written remains.
 void save_screenshot() {
-    const char* path=std::getenv("SFR_SCREENSHOT");
+    static const char* const path=std::getenv("SFR_SCREENSHOT");
     if(!path) return;
     static uint32_t presents=0;
     // SFR_SCREENSHOT_EVERY=N changes the interval (default 60 presents).
@@ -311,7 +311,8 @@ std::optional<AvatarMatrix> avatar_hand_transform(const AvatarPose& pose, uint32
 void draw_avatar_model(const AvatarFrameTransform& frame) {
     if (!skip_draws() && rendering_this_frame()) {
         graphics().presentation().draw_player_model(frame);
-        if (std::getenv("SFR_TRACE_AVATAR") && frame.present % 120 == 0) {
+        static const bool trace_avatar = std::getenv("SFR_TRACE_AVATAR") != nullptr;
+        if (trace_avatar && frame.present % 120 == 0) {
             const auto& v = graphics().presentation().raster_state().viewport();
             const auto& s = graphics().presentation().raster_state().scissor();
             std::cerr << "AVATAR_PASS present=" << frame.present << " draws=" << frame_draws << " viewport="
