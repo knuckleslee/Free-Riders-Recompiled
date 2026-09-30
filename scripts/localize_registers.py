@@ -86,6 +86,20 @@ PURE_HELPERS = {'enter_function', 'unsupported_function', 'load_reserved_word', 
 # global's import variable handler reads r31 and the link register the
 # function's __savegprlr stored (diagnostic_main.cpp, 0x82000664).
 OPAQUE_FUNCTIONS = {'sub_824F19E8'}
+# Callee-saved registers host code reads when these run: an audit in an
+# import (diagnostic_main.cpp dispatch_import_owned) or at a function's entry
+# (enter_function_observed) looks at what a caller further up left in r30 or
+# r31. They count as the function's inputs, so every caller between them and
+# the function holding the value (one that never names the register, too)
+# stores it to the context first.
+HOST_INPUTS = {
+    '__imp__XamUserGetSigninState': {'r30', 'r31'},  # the unselected user's record and manager
+    '__imp__XNotifyPositionUI': {'r30'},  # the notification listener's owner
+    'sub_824F19E8': {'r31'},  # the video global's shared surface
+    'sub_82213218': {'r31'},  # SFR_DIAGNOSTIC_ENTRIES audits from here on
+    'sub_825F8B58': {'r30'},
+    'sub_824F1F50': {'r30'},
+}
 # A full write: the whole register assigned from an expression.
 FULL_WRITE = {
     'r': re.compile(r'^\s*ctx\.(r[0-9]+)\.(?:u64|s64) = (.*)$'),
@@ -176,6 +190,8 @@ def localize(sources, hooks=frozenset()):
     calls = {name: set(match[2] for match in CALL.finditer(body)) for name, body in functions.items()}
     # Inputs reach through callers that never name the register.
     inputs = {name: set(found[1]) for name, found in analysed.items()}
+    for name, registers in HOST_INPUTS.items():
+        inputs.setdefault(name, set()).update(registers)
     changed = True
     while changed:
         changed = False

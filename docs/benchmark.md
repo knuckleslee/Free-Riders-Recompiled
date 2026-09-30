@@ -232,8 +232,10 @@ XenonRecomp 能把 CR、CTR、XER、保留值，以及呼叫之間不必保留�
 被換成對方的值。`tests/test_localize_registers.py` 的
 `test_callers_find_their_registers_as_they_left_them` 實際編譯執行這個情況。
 
-`SFR_DIAGNOSTIC_ENTRIES=1` 的幾個稽核（語言選擇、DDS 解析）在函式進入點讀呼叫者的 r30／r31，轉換過的
-程式不支援；遊戲與基準測試都是關閉的。
+修正後（commit ad06b57）開機流程與原本逐行相同，直到作者的「未選取使用者」稽核：`XamUserGetSigninState`
+這個 import 讀的是再上一層函式的 r30／r31（使用者紀錄與管理者），中間那層完全沒碰這兩個暫存器，上層
+就沒有在呼叫前存回 context。現在這類主機端讀取列在 `HOST_INPUTS`（兩個 import、顯示裝置全域變數，以及
+`SFR_DIAGNOSTIC_ENTRIES=1` 才開的幾個函式進入點稽核），算成那個函式的輸入，往上傳到真正持有值的函式。
 
 用法（不必重跑 XenonRecomp）：
 

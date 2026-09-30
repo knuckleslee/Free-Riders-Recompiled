@@ -100,6 +100,16 @@ class LocalizeRegistersTest(unittest.TestCase):
         self.assertIn('\tctx.r30 = r30;\n\tPPC_CALL_INDIRECT_FUNC(ctr.u32);\n', body)
         self.assertNotIn('ctx.r11 = r11', body)  # host code reads no volatile scratch register
 
+    def test_host_code_reading_a_register_further_up_gets_it(self):
+        # The sign-in audit reads r30 and r31 of the function two calls up.
+        middle = function('sub_82000200', (
+            '\tctx.r3.u64 = ctx.r4.u64;\n\t__imp__XamUserGetSigninState(ctx, base);\n'), 0x82000200)
+        outer = function('sub_82000100', (
+            '\tctx.r30.u64 = ctx.r3.u64;\n\tctx.r31.u64 = ctx.r5.u64;\n\tsub_82000200(ctx, base);\n'
+            '\tctx.r3.u64 = ctx.r30.u64 + ctx.r31.u64;\n'), 0x82000100)
+        result, _ = self.run_one(outer, middle)
+        self.assertIn('\tctx.r30 = r30;\n\tctx.r31 = r31;\n\tsub_82000200(ctx, base);\n', result['sub_82000100'])
+
     def test_a_function_handing_its_context_to_host_code_is_left_alone(self):
         source = function('sub_82000000', (
             '\tctx.r12.u64 = ctx.lr;\n\t__savegprlr_20(ctx, base);\n\tctx.r23.u64 = ctx.r3.u64;\n'
