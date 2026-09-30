@@ -1,4 +1,5 @@
 #include "launcher_settings.h"
+#include "game_language.h"
 #include <charconv>
 #include <fstream>
 #include <sstream>
@@ -24,6 +25,13 @@ void read_flag(const std::string& text, bool& out) {
     else if (text == "0" || text == "false") out = false;
 }
 
+uint32_t validated_render_scale(uint32_t scale) {
+    switch (scale) {
+    case 50: case 75: case 100: case 150: case 200: return scale;
+    default: return 100;
+    }
+}
+
 std::filesystem::path utf8_path(const std::string& text) {
     return std::filesystem::path(std::u8string(text.begin(), text.end()));
 }
@@ -45,6 +53,11 @@ LauncherSettings parse_launcher_settings(const std::string& text) {
         const std::string value = trim(std::string_view(line).substr(equals + 1));
         if (key == "window_width") read_number(value, 160, 16384, settings.window_width);
         else if (key == "window_height") read_number(value, 160, 16384, settings.window_height);
+        else if (key == "render_scale") {
+            uint32_t scale = 100;
+            read_number(value, 50, 200, scale);
+            settings.render_scale = validated_render_scale(scale);
+        }
         else if (key == "fullscreen") read_flag(value, settings.fullscreen);
         else if (key == "vsync") read_flag(value, settings.vsync);
         else if (key == "audio") read_flag(value, settings.audio);
@@ -75,6 +88,7 @@ LauncherSettings parse_launcher_settings(const std::string& text) {
         else if (key == "player2_keys" && value.size() <= 1024) settings.player2_keys = value;
         else if (key == "player2_pad" && value.size() <= 1024) settings.player2_pad = value;
         else if (key == "language" && (value == "auto" || value == "en" || value == "zh-TW")) settings.language = value;
+        else if (key == "game_language") settings.game_language = validated_game_language(value);
         else if (key == "image_directory") settings.image_directory = utf8_path(value);
         else if (key == "asset_directory") settings.asset_directory = utf8_path(value);
     }
@@ -86,6 +100,7 @@ std::string format_launcher_settings(const LauncherSettings& s) {
     out << "# Sonic Free Riders Recompiled launcher settings\n"
         << "window_width=" << s.window_width << '\n'
         << "window_height=" << s.window_height << '\n'
+        << "render_scale=" << validated_render_scale(s.render_scale) << '\n'
         << "fullscreen=" << s.fullscreen << '\n'
         << "vsync=" << s.vsync << '\n'
         << "audio=" << s.audio << '\n'
@@ -114,6 +129,7 @@ std::string format_launcher_settings(const LauncherSettings& s) {
         << "player2_keys=" << s.player2_keys << '\n'
         << "player2_pad=" << s.player2_pad << '\n'
         << "language=" << s.language << '\n'
+        << "game_language=" << validated_game_language(s.game_language) << '\n'
         << "image_directory=" << path_utf8(s.image_directory) << '\n'
         << "asset_directory=" << path_utf8(s.asset_directory) << '\n';
     return out.str();
@@ -168,13 +184,15 @@ std::vector<std::pair<std::string, std::string>> game_environment(const Launcher
         {"SFR_AUDIO", s.audio ? "1" : "0"},
         // The player is signed in, so the game keeps records (docs/saves.md).
         {"SFR_PROFILE", "1"},
+        {"SFR_GAME_LANGUAGE", std::string(validated_game_language(s.game_language))},
         {"SFR_VOLUME", std::to_string(s.volume)},
         {"SFR_SKIP_MOVIES", s.skip_movies ? "1" : ""},
         {"SFR_WINDOW_WIDTH", std::to_string(s.window_width)},
         {"SFR_WINDOW_HEIGHT", std::to_string(s.window_height)},
+        {"SFR_RENDER_SCALE", std::to_string(validated_render_scale(s.render_scale))},
         {"SFR_FULLSCREEN", s.fullscreen ? "1" : "0"},
         {"SFR_VSYNC", s.vsync ? "1" : "0"},
-        {"SFR_GRAPHICS", s.vulkan ? "vulkan" : ""},
+        {"SFR_GRAPHICS", s.vulkan ? "vulkan" : "d3d12"},
         // "off" leaves the camera alone; "picture" opens it for the image the
         // title shows; "motion" also drives the Kinect player's body with it;
         // "kinect" is a real sensor tracking the players (kinect_sensor.h).

@@ -11,6 +11,7 @@ namespace sfr {
 // (environment variables and arguments), so it is fixed for a run.
 struct LauncherSettings {
     uint32_t window_width = 1280, window_height = 720;
+    uint32_t render_scale = 100;     // percent of native 1280x720; SFR_RENDER_SCALE
     bool fullscreen = false;
     bool vsync = false;
     bool audio = true;
@@ -21,7 +22,7 @@ struct LauncherSettings {
     bool parallel = true;            // SFR_PARALLEL_WORKER=cores (off: serial)
     uint32_t race_render_every = 1;  // SFR_RENDER_EVERY
     bool ui_sounds = true;           // the launcher's own sounds
-    bool vulkan = false;             // SFR_GRAPHICS=vulkan instead of Direct3D 12
+    bool vulkan = true;             // legacy settings key; selects Vulkan or D3D12
     bool touch_controls = true;      // SFR_TOUCH_CONTROLS (Android)
     bool tilt = true;                // SFR_TILT: tilt to steer (Android)
     // Where the Kinect player's body comes from, and whether the camera
@@ -61,6 +62,7 @@ struct LauncherSettings {
     // Empty means whichever one the host offers first.
     std::string player1_gamepad, player2_gamepad;
     std::string language = "auto";   // the launcher's: "auto" (the system's), "en" or "zh-TW"
+    std::string game_language = "auto"; // independent disc language; game_language.h
     std::filesystem::path image_directory, asset_directory;
 };
 

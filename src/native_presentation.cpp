@@ -149,6 +149,32 @@ struct NativePresentation::Impl {
     NativeGraphics* graphics = nullptr;
     uint32_t width = 0;
     uint32_t height = 0;
+    uint32_t render_width = 0;
+    uint32_t render_height = 0;
+    plume::RenderRect render_rectangle(const plume::RenderRect& rect) const {
+        // Round shared endpoints identically: neighboring player scissors and
+        // clears must neither overlap nor leave a seam at fractional scales.
+        const auto coordinate = [](int32_t value, uint32_t render, uint32_t logical) {
+            return int32_t((uint64_t(value) * render + logical / 2) / logical);
+        };
+        return {coordinate(rect.left, render_width, width), coordinate(rect.top, render_height, height),
+                coordinate(rect.right, render_width, width), coordinate(rect.bottom, render_height, height)};
+    }
+    // The title's viewport and scissor at the render resolution.
+    void scaled_raster(plume::RenderViewport& viewport, plume::RenderRect& scissor) const {
+        viewport = raster_state->viewport();
+        const float x = float(render_width) / width, y = float(render_height) / height;
+        viewport.x *= x; viewport.width *= x;
+        viewport.y *= y; viewport.height *= y;
+        scissor = render_rectangle(raster_state->scissor());
+    }
+    void apply_raster() {
+        plume::RenderViewport viewport;
+        plume::RenderRect scissor;
+        scaled_raster(viewport, scissor);
+        command_list->setViewports(viewport);
+        command_list->setScissors(scissor);
+    }
 #ifdef _WIN32
     HWND window = nullptr;
 #else
@@ -300,6 +326,29 @@ struct NativePresentation::Impl {
     void wait_for(plume::RenderCommandFence* target) {
         const auto wait = [this, target] { graphics->queue().waitForCommandFence(target); };
         if (!gpu_wait()) { wait(); return; }
+        static const bool fast = [] {
+            const char* text = std::getenv("SFR_GPU_WAIT_FAST");
+            return !text || *text != '0';
+        }();
+        if (fast) {
+#ifdef _WIN32
+            if (graphics->backend() == sfr::GraphicsBackend::d3d12) {
+                // Plume uses an auto-reset event. This zero-time wait also
+                // consumes it; waiting a second time would block forever.
+                const auto* fence = static_cast<plume::D3D12CommandFence*>(target);
+                if (WaitForSingleObjectEx(fence->fenceEvent, 0, FALSE) == WAIT_OBJECT_0) return;
+            } else
+#endif
+            {
+                const auto* fence = static_cast<plume::VulkanCommandFence*>(target);
+                if (vkGetFenceStatus(fence->device->vk, fence->vk) == VK_SUCCESS) {
+                    // Unlike the D3D12 event, querying does not consume the
+                    // signal. Plume's wait resets this fence before reuse.
+                    wait();
+                    return;
+                }
+            }
+        }
         in_gpu_wait.store(true, std::memory_order_release);
         try { gpu_wait()(wait); }
         catch (...) { in_gpu_wait.store(false, std::memory_order_release); throw; }
@@ -361,7 +410,8 @@ struct NativePresentation::Impl {
     static constexpr uint64_t queue_capacity = 4096;
     struct RecordSlot {
         NativePresentation::RecordFunction function = nullptr;
-        std::optional<NativeRasterState> raster;
+        plume::RenderViewport viewport;  // as the title had them when the draw was asked for
+        plume::RenderRect scissor;
         uint64_t generation = 0;
         alignas(16) unsigned char payload[NativePresentation::record_payload_bytes];
     };
@@ -384,7 +434,8 @@ struct NativePresentation::Impl {
                 auto& slot = slots[head % queue_capacity];
                 if (!worker_failed.load(std::memory_order_relaxed)) {
                     try {
-                        slot.raster->apply(*command_list);
+                        command_list->setViewports(slot.viewport);
+                        command_list->setScissors(slot.scissor);
                         slot.function(slot.payload, *command_list, slot.generation);
                     } catch (...) {
                         std::lock_guard lock(queue_mutex);
@@ -455,7 +506,7 @@ struct NativePresentation::Impl {
     void enqueue(NativePresentation::RecordFunction function, const void* payload, size_t bytes) {
         if (!render_thread_enabled()) {
             ensure_open();
-            raster_state->apply(*command_list);
+            apply_raster();
             function(payload, *command_list, list_generation);
             return;
         }
@@ -466,7 +517,7 @@ struct NativePresentation::Impl {
         if (tail - queue_head.load(std::memory_order_acquire) >= queue_capacity) wait_for_head(tail - queue_capacity + 1);
         auto& slot = slots[tail % queue_capacity];
         slot.function = function;
-        slot.raster = *raster_state;
+        scaled_raster(slot.viewport, slot.scissor);
         slot.generation = list_generation;
         std::memcpy(slot.payload, payload, bytes);
         queue_tail.store(tail + 1, std::memory_order_seq_cst);
@@ -889,6 +940,19 @@ NativePresentation::NativePresentation(NativeGraphics& graphics, uint32_t width,
     implementation->graphics = &graphics;
     implementation->width = width;
     implementation->height = height;
+    uint32_t percent = 100;
+    if (const char* setting = std::getenv("SFR_RENDER_SCALE"); setting && *setting) {
+        const std::string value(setting);
+        if (value == "50" || value == "75" || value == "100" || value == "150" || value == "200")
+            percent = uint32_t(std::stoul(value));
+        else std::cerr << "NATIVE_RENDER_SCALE invalid=" << value << " fallback=100\n";
+    }
+    implementation->render_width = (std::max)(1u, (width * percent + 50) / 100);
+    implementation->render_height = (std::max)(1u, (height * percent + 50) / 100);
+    if (implementation->render_width > 8192 || implementation->render_height > 8192)
+        throw std::invalid_argument("scaled native presentation dimensions exceed 8192");
+    std::cerr << "NATIVE_RENDER_SCALE percent=" << percent << " logical=" << width << 'x' << height
+              << " physical=" << implementation->render_width << 'x' << implementation->render_height << '\n';
 
     const bool d3d12 = graphics.backend() == GraphicsBackend::d3d12;
 #ifdef _WIN32
@@ -981,9 +1045,9 @@ NativePresentation::NativePresentation(NativeGraphics& graphics, uint32_t width,
         implementation->start_fullscreen = true;
 
     implementation->color = graphics.device().createTexture(
-        plume::RenderTextureDesc::ColorTarget(width, height, plume::RenderFormat::B8G8R8A8_UNORM));
+        plume::RenderTextureDesc::ColorTarget(implementation->render_width, implementation->render_height, plume::RenderFormat::B8G8R8A8_UNORM));
     implementation->depth = graphics.device().createTexture(
-        plume::RenderTextureDesc::DepthTarget(width, height, plume::RenderFormat::D32_FLOAT_S8_UINT));
+        plume::RenderTextureDesc::DepthTarget(implementation->render_width, implementation->render_height, plume::RenderFormat::D32_FLOAT_S8_UINT));
     if (!implementation->color) unavailable("color texture");
     if (!implementation->depth) unavailable("depth texture");
 #ifdef _WIN32
@@ -1001,7 +1065,7 @@ NativePresentation::NativePresentation(NativeGraphics& graphics, uint32_t width,
     implementation->spare_fence = graphics.device().createCommandFence();
     if (!implementation->spare_list || !implementation->spare_fence) unavailable("spare command list");
     if (!implementation->framebuffer) unavailable("framebuffer");
-    if (implementation->framebuffer->getWidth() != width || implementation->framebuffer->getHeight() != height)
+    if (implementation->framebuffer->getWidth() != implementation->render_width || implementation->framebuffer->getHeight() != implementation->render_height)
         unavailable("framebuffer");
     if (!implementation->command_list) unavailable("command list");
     if (!implementation->fence) unavailable("command fence");
@@ -1025,6 +1089,11 @@ NativePresentation::~NativePresentation() = default;
 
 uint32_t NativePresentation::width() const noexcept { return impl_->width; }
 uint32_t NativePresentation::height() const noexcept { return impl_->height; }
+uint32_t NativePresentation::render_width() const noexcept { return impl_->render_width; }
+uint32_t NativePresentation::render_height() const noexcept { return impl_->render_height; }
+plume::RenderRect NativePresentation::render_rectangle(const plume::RenderRect& rectangle) const {
+    return impl_->render_rectangle(rectangle);
+}
 plume::RenderTexture& NativePresentation::color() { return *impl_->color; }
 plume::RenderTexture& NativePresentation::depth() { return *impl_->depth; }
 
@@ -1043,8 +1112,21 @@ void NativePresentation::clear(const NativeClear& clear, std::span<const plume::
     if (!clear.color && !clear.depth && !clear.stencil) return;
 
     impl_->drain();
+    std::vector<plume::RenderRect> scaled;
+    if (!rectangles.empty()) {
+        scaled.reserve(rectangles.size());
+        for (const auto& rectangle : rectangles) {
+            const auto rect = impl_->render_rectangle(rectangle);
+            if (rect.left < rect.right && rect.top < rect.bottom) scaled.push_back(rect);
+        }
+        // A subpixel logical rectangle may vanish at a lower scale. An empty
+        // rectangle array means full clear to Plume, so do not submit it.
+        if (scaled.empty()) return;
+        rectangles = scaled;
+    }
+
     impl_->ensure_open();
-    impl_->raster_state->apply(*impl_->command_list);
+    impl_->apply_raster();
     if (clear.color) {
         const auto& c = clear.color_value;
         impl_->command_list->clearColor(0, plume::RenderColor(c[0], c[1], c[2], c[3]), rectangles.data(), static_cast<uint32_t>(rectangles.size()));
@@ -1063,7 +1145,7 @@ void NativePresentation::record(const std::function<void(plume::RenderCommandLis
     impl_->refuse_during_gpu_wait();
     impl_->drain();
     impl_->ensure_open();
-    impl_->raster_state->apply(*impl_->command_list);
+    impl_->apply_raster();
     body(*impl_->command_list);
 }
 
@@ -1096,8 +1178,8 @@ std::vector<uint8_t> NativePresentation::readback_color() {
     constexpr uint32_t bytes_per_pixel = 4;
     if (impl_->graphics->backend() == GraphicsBackend::vulkan) {
         // Plume copies buffers into textures only; the other way is native.
-        const uint64_t row_pitch = uint64_t(impl_->width) * bytes_per_pixel;
-        auto buffer = impl_->graphics->device().createBuffer(plume::RenderBufferDesc::ReadbackBuffer(row_pitch * impl_->height));
+        const uint64_t row_pitch = uint64_t(impl_->render_width) * bytes_per_pixel;
+        auto buffer = impl_->graphics->device().createBuffer(plume::RenderBufferDesc::ReadbackBuffer(row_pitch * impl_->render_height));
         if (!buffer) unavailable("readback buffer");
         impl_->flush();
         impl_->begin_list();
@@ -1106,7 +1188,7 @@ std::vector<uint8_t> NativePresentation::readback_color() {
         VkBufferImageCopy region{};
         region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         region.imageSubresource.layerCount = 1;
-        region.imageExtent = {impl_->width, impl_->height, 1};
+        region.imageExtent = {impl_->render_width, impl_->render_height, 1};
         vkCmdCopyImageToBuffer(static_cast<plume::VulkanCommandList*>(impl_->command_list.get())->vk,
                                static_cast<plume::VulkanTexture*>(impl_->color.get())->vk,
                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -1117,7 +1199,7 @@ std::vector<uint8_t> NativePresentation::readback_color() {
         impl_->execute();
         const auto* mapped = static_cast<const uint8_t*>(buffer->map());
         if (!mapped) unavailable("mapped readback buffer");
-        std::vector<uint8_t> result(mapped, mapped + row_pitch * impl_->height);
+        std::vector<uint8_t> result(mapped, mapped + row_pitch * impl_->render_height);
         buffer->unmap();
         return result;
     }
@@ -1131,8 +1213,8 @@ std::vector<uint8_t> NativePresentation::readback_color() {
     UINT64 total_bytes = 0;
     static_cast<plume::D3D12Device*>(&impl_->graphics->device())->d3d->GetCopyableFootprints(
         &resource_desc, 0, 1, 0, &footprint, &row_count, &row_bytes, &total_bytes);
-    if (footprint.Footprint.Format != DXGI_FORMAT_B8G8R8A8_UNORM || row_count != impl_->height ||
-        row_bytes != static_cast<UINT64>(impl_->width) * bytes_per_pixel ||
+    if (footprint.Footprint.Format != DXGI_FORMAT_B8G8R8A8_UNORM || row_count != impl_->render_height ||
+        row_bytes != static_cast<UINT64>(impl_->render_width) * bytes_per_pixel ||
         footprint.Footprint.RowPitch < row_bytes || (footprint.Footprint.RowPitch & 255u) != 0)
         throw std::runtime_error("native presentation returned an invalid color copy footprint");
     auto buffer = impl_->graphics->device().createBuffer(
@@ -1161,11 +1243,11 @@ std::vector<uint8_t> NativePresentation::readback_color() {
 
     const auto* mapped = static_cast<const uint8_t*>(buffer->map());
     if (!mapped) unavailable("mapped readback buffer");
-    std::vector<uint8_t> result(static_cast<std::size_t>(impl_->width) * impl_->height * bytes_per_pixel);
-    for (uint32_t y = 0; y < impl_->height; ++y)
-        std::memcpy(result.data() + static_cast<std::size_t>(y) * impl_->width * bytes_per_pixel,
+    std::vector<uint8_t> result(static_cast<std::size_t>(impl_->render_width) * impl_->render_height * bytes_per_pixel);
+    for (uint32_t y = 0; y < impl_->render_height; ++y)
+        std::memcpy(result.data() + static_cast<std::size_t>(y) * impl_->render_width * bytes_per_pixel,
                     mapped + footprint.Offset + static_cast<std::size_t>(y) * footprint.Footprint.RowPitch,
-                    impl_->width * bytes_per_pixel);
+                    impl_->render_width * bytes_per_pixel);
     buffer->unmap();
     return result;
 #endif
@@ -1220,7 +1302,7 @@ void NativePresentation::draw_player_model(const AvatarFrameTransform& frame) {
     if (!impl_->model_pipeline) return;
     impl_->drain();
     impl_->ensure_open();
-    impl_->raster_state->apply(*impl_->command_list);
+    impl_->apply_raster();
     impl_->draw_model(frame);
     // NativeRenderer caches layout/pipeline/descriptors/vertex bindings.
     // Force the next title draw to restore all of them after this custom pass.
@@ -1283,7 +1365,7 @@ void NativePresentation::present(uint32_t area_width, uint32_t area_height) {
     const uint32_t out_width = impl_->swap_chain->getWidth(), out_height = impl_->swap_chain->getHeight();
     const bool can_copy = impl_->graphics->backend() != GraphicsBackend::vulkan ||
         (static_cast<plume::VulkanSwapChain*>(impl_->swap_chain.get())->createInfo.imageUsage & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-    const bool stretch = !can_copy || part || out_width != impl_->width || out_height != impl_->height;
+    const bool stretch = !can_copy || part || out_width != impl_->render_width || out_height != impl_->render_height;
     // The copy to the swap-chain texture follows the frame's draws in their
     // own list; pipelined, the frame is submitted without waiting for it.
     const bool pipelined = Impl::pipelined();
@@ -1319,8 +1401,9 @@ void NativePresentation::present(uint32_t area_width, uint32_t area_height) {
         impl_->command_list->setGraphicsDescriptorSet(impl_->blit_sampler.get(), 1);
         // The shown part of the framebuffer (all of it when the game names no
         // area: 0 here would sample its corner texel over the whole window).
-        std::array<float, 32> constants{float(shown_width) / float(impl_->width),
-                                        float(shown_height) / float(impl_->height)};
+        const auto shown = impl_->render_rectangle({0, 0, int32_t(shown_width), int32_t(shown_height)});
+        std::array<float, 32> constants{float(shown.right) / float(impl_->render_width),
+                                        float(shown.bottom) / float(impl_->render_height)};
         if (touch_controls_active()) {
             const TouchOverlay overlay = touch_overlay();
             constants[2] = overlay.knob[0];

@@ -3,7 +3,11 @@
 [English](README.md)
 
 Free Riders Recompiled 是以靜態重編譯製作的 Xbox 360 版《Sonic Free Riders》非官方移植，
-支援 Windows、Linux 與 Android。遊戲的 PowerPC 程式碼經
+支援 Windows、Linux 與 Android。可使用手把或鍵盤遊玩，也能在 **Windows 上使用 Kinect／
+Kinect v2 或一般攝影機進行體感操作**，並匯入自己的 **VRM 模型**作為遊戲內的 AVATAR 角色。
+Kinect v2 目前屬實驗性支援，仍待實機驗證。
+
+遊戲的 PowerPC 程式碼經
 [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) 轉成 C++，Xenos 著色器經
 [XenosRecomp](https://github.com/sonicnext-dev/XenosRecomp) 轉換，再由原生執行期代替主機的
 核心、繪圖、音效、輸入與 Kinect。
@@ -27,13 +31,11 @@ Free Riders Recompiled 是以靜態重編譯製作的 Xbox 360 版《Sonic Free 
 - Direct3D 12 與 Vulkan 繪圖，著色器在遊戲遇到時即時轉換；音效；紀錄的儲存與讀取。
 - 不需要 Kinect：Kinect 由程式模擬。按鍵代替選單能聽懂的語音指令，手把驅動比賽讀取的
   身體動作（傾斜、跳躍、踢地加速、抓取、特技）。
-- Windows 上可接實體 Kinect（Xbox 360 版／Kinect for Windows 第一代需安裝 Kinect for Windows
-  SDK 1.8；Xbox One 版 Kinect v2 需安裝 SDK 2.0）：感測器的骨架直接交給遊戲，由遊戲自己的手勢判斷器讀取，和主機上一樣；也可以用 webcam
-  代替（[docs/kinect-sensor.md](docs/kinect-sensor.md)、[docs/camera-input.md](docs/camera-input.md)）。
-  已在 Windows 10 上用 Xbox 360 版 Kinect（SDK 1.8）實際跑完比賽；Kinect v2 尚未實機測試。
+- Windows 支援實體 Kinect 與 Kinect v2，將感測器追蹤的骨架交給遊戲。
+  Xbox 360 版 Kinect 已實際跑完比賽；Kinect v2 仍屬實驗性支援。
+  詳見下方的 [Kinect 與 Kinect v2](#kinect-與-kinect-v2)。
 - 各平台都有啟動器：從光碟映像檔安裝遊戲並保存設定，支援英文與繁體中文（右上角可切換）。
-- Linux（Vulkan、SDL2），以及 Android（arm64-v8a）的觸控按鈕與傾斜轉彎；手機本身的鏡頭也能當作 webcam
-  （Android 鏡頭擷取，尚未實機測試）。
+- Linux（Vulkan、SDL2），以及 Android（arm64-v8a）的觸控按鈕與傾斜轉彎。
 - Windows 可選擇使用 webcam 控制 1P：估算 3D 骨架、手把自動接手，以及獨立骨架 Debug 視窗。
 - 實驗性 VRM Avatar 模型：可在啟動器選擇自己的模型，搭配遊戲動畫與手持道具。
 
@@ -62,6 +64,23 @@ Free Riders Recompiled 是以靜態重編譯製作的 Xbox 360 版《Sonic Free 
 2. 解壓縮到一個獨立的資料夾（Android 則安裝 APK）。
 3. 執行 `FreeRidersRecompiled`，在啟動器要求時選擇你的光碟映像檔（`.iso`），它會把遊戲資料
    複製到旁邊。然後按 **開始遊戲**。
+
+## 設定分類
+
+啟動器依照用途分成七類：
+
+| 分類 | 設定內容 |
+| --- | --- |
+| 一般 | 啟動器語言、遊戲語言、影片、還原設定 |
+| 畫面與效能 | 視窗與遊戲渲染解析度、全螢幕、繪圖後端、垂直同步、可展開的進階效能選項 |
+| 音效 | 遊戲音量、啟動器提示音 |
+| 控制器與按鍵 | 各玩家的輸入來源與手把、按鍵綁定、Android 觸控與傾斜操作 |
+| 體感與攝影機 | Kinect／攝影機模式、裝置與預覽、鏡像、骨架 Debug、語音指令 |
+| Avatar 模型 | 選擇或清除自訂 VRM／GLB 模型 |
+| 遊戲檔案 | 安裝、資料位置與 Shader Pack |
+
+兩種解析度一起放在 **畫面與效能 → 解析度**：視窗解析度決定輸出視窗大小，
+遊戲渲染解析度決定遊戲實際繪製的像素數。遊戲設定於下次啟動遊戲時套用。
 
 ## 建置
 
@@ -102,6 +121,26 @@ python scripts/prepare_recomp.py
 Xbox 與 PlayStation 手把都能使用。Android 沒有連接手把時，畫面上的半透明觸控按鈕提供相同的
 操作，比賽中也能左右傾斜手機轉彎。
 
+## Kinect 與 Kinect v2
+
+Windows 版支援實體 **Kinect v1** 與 **Kinect v2** 感測器的身體追蹤。
+Kinect 為選用功能；使用手把或鍵盤遊玩，不需要感測器，也不必安裝 Kinect SDK。
+
+| 感測器 | 所需設備與軟體 | 目前狀態 |
+| --- | --- | --- |
+| Xbox 360 版 Kinect／Kinect for Windows 第一代 | SDK 1.8 與供電 USB 連接；Xbox 360 版需完整 SDK，Kinect for Windows 第一代可用 Runtime 1.8 | 已在 Windows 10 上用 Xbox 360 版 Kinect 實際跑完比賽 |
+| Kinect v2／Xbox One 版 Kinect | SDK 2.0、USB 3.0 與相容的 PC 電源轉接器 | 實驗性支援；已實作骨架追蹤，仍待實機遊玩驗證 |
+
+安裝對應 SDK 並連接感測器後，在啟動器的 **體感與攝影機 → 攝影機** 設定選擇 **Kinect**，
+再按 **開啟預覽** 確認追蹤狀態。兩代共用同一個選項：程式先嘗試 v1，再嘗試 v2。
+請讓全身進入感測器範圍，並預留足夠的活動空間。
+
+Kinect v1 可提供骨架、深度與彩色影像；目前的 v2 支援只提供骨架，並以骨架補足
+轉向與蹲跳判定。實體 Kinect 輸入僅支援 Windows，Linux 與 Android 發行包尚未提供。
+
+SDK 下載、轉接器需求與疑難排解見 [Kinect 感測器使用說明](docs/kinect-sensor.md)。
+若要使用一般攝影機進行體感操作，請看下一節。
+
 ## 攝影機體感
 
 ![攝影機體感遊玩與即時骨架 Debug 視窗](docs/images/camera-input-skeleton.png)
@@ -109,7 +148,7 @@ Xbox 與 PlayStation 手把都能使用。Android 沒有連接手把時，畫面
 *從同一幀錄影裁切並排的遊戲與骨架畫面。Debug 視窗以正面與側面視角顯示實際交給遊戲的
 關節，不顯示攝影機影像。*
 
-Windows v0.2.0 發行包已內附體感模型與執行庫。在啟動器選擇 **攝影機 → 體感**，
+Windows 發行包已內附體感模型與執行庫。在啟動器選擇 **體感與攝影機 → 攝影機 → 體感**，
 並讓全身進入鏡頭範圍。可另外開啟 **骨架 Debug 視窗**，查看遊戲收到的骨架正面與
 側面視圖；視窗不顯示攝影機影像。
 
@@ -136,7 +175,7 @@ Windows v0.2.0 發行包已內附體感模型與執行庫。在啟動器選擇 *
 
 *以自訂 VRM 模型替換遊戲內的 AVATAR 角色。*
 
-1. 開啟啟動器的 **進階** 分頁，找到 **Avatar 模型**。
+1. 開啟啟動器的 **Avatar 模型** 分頁。
 2. 按 **瀏覽**，選擇 `.vrm` 或二進位 `.glb` 檔。桌面版也可直接輸入路徑；Android 會將
    模型複製到 app 的儲存空間。
 3. 啟動遊戲，在角色選單選擇 **AVATAR**，再選 Gear。存檔需已能選擇 AVATAR；設定模型
@@ -156,6 +195,12 @@ Linux／Android 實機 VRM 遊玩仍待更多測試。
 平台細節與疑難排解見 [VRM Avatar 使用說明](docs/vrm-avatar.md)（英文）。
 
 ## 常見問題
+
+**如何選擇西班牙文或其他遊戲語言？** 在啟動器的 **一般 → 遊戲語言** 選擇英文、日文、
+德文、法文、西班牙文或義大利文，再啟動遊戲。預設的 **系統語言** 會依照作業系統設定；
+這與啟動器的英文／繁體中文介面分開。不支援的系統語言會使用英文，無法取得或對應的
+系統國家會使用美國設定，並在 `game.log` 留下警告，不需修改作業系統設定。
+直接執行遊戲時可設定 `SFR_GAME_LANGUAGE=auto/en/ja/de/fr/es/it`（擇一），無效值視同 `auto`。
 
 **設定與存檔在哪裡？** 在啟動器旁：`settings.ini`、`save/` 與 `game.log`（Android 在 app 的
 檔案目錄）。遊戲以名為「Player」的本機帳號遊玩；問到「Are you Player?」時選 Yes，第一次會問

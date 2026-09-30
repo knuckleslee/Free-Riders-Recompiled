@@ -3,8 +3,12 @@
 [繁體中文](README.zh-TW.md)
 
 Free Riders Recompiled is an unofficial port of the Xbox 360 version of *Sonic
-Free Riders* made through static recompilation, for Windows, Linux and
-Android. The game's PowerPC code is translated to C++ with
+Free Riders* for Windows, Linux and Android, built through static recompilation.
+Play with a controller or keyboard, use **Kinect / Kinect v2 or webcam motion
+controls on Windows**, and bring your own **VRM model** to the in-game AVATAR
+rider. Kinect v2 support is experimental and still needs hardware validation.
+
+The game's PowerPC code is translated to C++ with
 [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) and its Xenos shaders
 with [XenosRecomp](https://github.com/sonicnext-dev/XenosRecomp), then runs on
 a native runtime that stands in for the console's kernel, graphics, audio,
@@ -27,8 +31,10 @@ page; to build it yourself, see [Building](docs/building.md).
 - [Status](#status)
 - [System Requirements](#system-requirements)
 - [How to Install](#how-to-install)
+- [Settings](#settings)
 - [How to Build](#how-to-build)
 - [Controls](#controls)
+- [Kinect and Kinect v2](#kinect-and-kinect-v2)
 - [Camera motion input](#camera-motion-input)
 - [VRM Avatar models](#vrm-avatar-models)
 - [FAQ](#faq)
@@ -47,18 +53,13 @@ What works today:
 - Playing without Kinect: the Kinect is emulated. Buttons stand in for the
   voice commands the menus understand, and the pad drives the body a race
   reads (leaning, jumping, kick dash, grabbing, tricks).
-- A real Kinect on Windows (Xbox 360 / Kinect for Windows v1 with the Kinect
-  for Windows SDK 1.8, or Kinect v2 with SDK 2.0): the sensor's skeletons go to the game, which
-  reads them with its own gesture detectors, as on the console; or a webcam
-  standing in for it ([docs/kinect-sensor.md](docs/kinect-sensor.md),
-  [docs/camera-input.md](docs/camera-input.md)). Played through races with an
-  Xbox 360 Kinect (SDK 1.8) on Windows 10; the Kinect v2 path is not yet tried
-  on hardware.
+- Physical Kinect and Kinect v2 input on Windows, with sensor skeletons
+  passed to the game. Xbox 360 Kinect has been tested through races;
+  Kinect v2 support is experimental. See [setup and requirements](#kinect-and-kinect-v2).
 - A launcher that installs the game from your disc image and keeps its
   settings, in English or Traditional Chinese, on every platform.
 - Linux (Vulkan, SDL2), and Android (arm64-v8a) with on-screen touch controls
-  and tilt steering; the phone's own camera can stand in for the webcam
-  (Android camera capture, not yet tried on a device).
+  and tilt steering.
 - Optional webcam motion input for 1P on Windows, with estimated 3D body
   joints, controller handoff and a separate skeleton debug window.
 - Experimental custom VRM Avatar models, selected in the launcher, with
@@ -95,6 +96,24 @@ with [docs/progress.md](docs/progress.md).
 3. Start `FreeRidersRecompiled` and choose your disc image (`.iso`) when the
    launcher asks; it copies the game's data beside itself. Then press
    **Start game**.
+
+## Settings
+
+The launcher groups settings by what you want to change:
+
+| Category | Settings |
+| --- | --- |
+| General | Launcher and game languages, movies, restore defaults |
+| Graphics | Window and rendering resolutions, fullscreen, backend, VSync, expandable performance options |
+| Sound | Game volume and launcher sounds |
+| Controls | Each player's input source and controller, button/key bindings, Android touch and tilt |
+| Motion input | Kinect/webcam mode, device and preview, mirror, skeleton debug, voice commands |
+| Avatar models | Select or clear a custom VRM/GLB model |
+| Game files | Installation, data locations and shader pack |
+
+Window and rendering resolutions sit together under **Graphics > Resolution**:
+the first sets the output window size, while the second controls the pixels the
+game draws. Changes to game settings apply on the next game launch.
 
 ## How to Build
 
@@ -137,6 +156,32 @@ buttons cover the same actions when no controller is connected, and tilting
 the phone steers in a race. Details: [docs/race-controls.md](docs/race-controls.md),
 [docs/pad-menus.md](docs/pad-menus.md).
 
+## Kinect and Kinect v2
+
+The Windows version supports physical **Kinect v1** and **Kinect v2** sensors
+for body tracking. Kinect is optional: controller and keyboard play do not
+require a sensor or its SDK.
+
+| Sensor | What you need | Current status |
+| --- | --- | --- |
+| Kinect for Xbox 360 / Kinect for Windows v1 | SDK 1.8 and a powered USB connection; the Xbox 360 sensor requires the full SDK, while Kinect for Windows v1 can use Runtime 1.8 | Xbox 360 Kinect tested through races on Windows 10 |
+| Kinect v2 / Kinect for Xbox One | SDK 2.0, USB 3.0 and a compatible powered PC adapter | Experimental; skeleton tracking is implemented, but hardware gameplay validation is still pending |
+
+Install the matching SDK, connect the sensor, then select **Kinect** in the
+launcher's **Motion input > Camera** setting and choose **Open preview** to check tracking.
+Both generations use the same option: the runtime tries v1 first, then v2.
+Keep your whole body visible
+and allow enough space to move.
+
+Kinect v1 can supply skeleton, depth and color data. The current v2 backend
+supplies skeletons only, with additional skeleton-based steering and crouch/jump
+handling. Physical Kinect input is Windows-only; Linux and Android releases
+do not provide it.
+
+SDK links, adapter requirements and troubleshooting:
+[Kinect sensor guide](docs/kinect-sensor.md) (Traditional Chinese).
+For motion controls with an ordinary webcam, see the next section.
+
 ## Camera motion input
 
 ![Camera-controlled gameplay alongside the live skeleton debug window](docs/images/camera-input-skeleton.png)
@@ -145,8 +190,8 @@ the phone steers in a race. Details: [docs/race-controls.md](docs/race-controls.
 recording frame and arranged side by side. The debug window shows front and
 side views of the joints, without displaying the webcam image.*
 
-The Windows v0.2.0 release includes the models and runtime for webcam motion
-input. Select **Camera > Motion** in the launcher and keep your whole body
+Windows releases include the models and runtime for webcam motion
+input. Select **Motion input > Camera > Motion** in the launcher and keep your whole body
 in view. **Skeleton debug window** opens front and side views of the joints
 the game receives; it does not show the camera image.
 
@@ -179,7 +224,7 @@ keyboard controls work with the model too.
 
 *A custom VRM model replacing the in-game AVATAR rider.*
 
-1. Open the launcher's **Advanced** tab and find **Avatar model**.
+1. Open the launcher's **Avatar models** tab.
 2. Choose **Browse** and select a `.vrm` or binary `.glb` file. Desktop users
    can also type its path; Android imports a copy into the app's storage.
 3. Start the game and select **AVATAR** in the character menu, then choose
@@ -204,6 +249,32 @@ and physical Linux/Android VRM gameplay still need broader testing.
 Troubleshooting and platform details: [VRM Avatar guide](docs/vrm-avatar.md).
 
 ## FAQ
+
+**How do I select Spanish or another game language?** Open **General > Game language**
+in the launcher and choose English, Japanese, German, French, Spanish or Italian,
+then start the game. **System language** is the default. This is separate from
+the launcher's English/Traditional Chinese interface. Unsupported system languages
+use English; unavailable or unmapped system countries use the US profile and
+record a warning in `game.log`, without requiring changes to your OS settings.
+For direct runtime launches, set `SFR_GAME_LANGUAGE` to `auto`, `en`, `ja`, `de`,
+`fr`, `es` or `it`. Invalid values behave as `auto`.
+
+**How do I choose Vulkan or D3D12?** On Windows, open **Graphics > Graphics backend**
+and choose either backend before starting the game. New settings default to Vulkan;
+existing saved choices are preserved. Linux and Android use Vulkan.
+
+**Can I change the game's internal resolution?** Yes. **Rendering resolution**
+offers 360p, 540p, native 720p (default), 1080p and 1440p, independently of output
+window size. Apply it before starting the game. Lower values may help a limited
+GPU; higher values draw more detail at a greater cost. See
+[Internal resolution](docs/internal-resolution.md).
+
+**How can I compare performance without changing game speed?** Keep the normal
+60 FPS cap and compare the same part of the same course, including slower-frame
+times. Uncapping currently speeds up the game logic too. Recording instructions
+and the limits of testing on a faster PC: [Performance measurements](docs/benchmarking.md).
+Guided 1P, 2P, Camera and VRM comparisons: [Benchmark scenarios](docs/benchmark-scenarios.md).
+Current local verification and hardware limits: [Validation report](docs/performance-resolution-validation.md).
 
 **Where are the settings and saves?** Beside the launcher: `settings.ini`,
 `save/` and `game.log` (on Android, in the app's files directory). The game
