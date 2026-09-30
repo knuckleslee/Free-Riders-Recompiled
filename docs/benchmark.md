@@ -250,3 +250,19 @@ py scripts\localize_registers.py out\recomp\diagnostic out\recomp\diagnostic-loc
 ```
 
 改回原本的程式碼：用 `-DiagnosticDirectory out/recomp/diagnostic` 再建置一次。
+
+## 2026-09-30：第一批改動加暫存器區域變數的結果（commit `bc9af04`）
+
+同一台 i7-6850K／RTX 3080 Ti，完整跑進比賽，每種設定兩趟：
+
+| | 平均 fps | 中位數 ms | P95 ms | 主執行緒持有 ms |
+| --- | ---: | ---: | ---: | ---: |
+| 改動前（commit `a2776cb`，20260930-042938） | 25.8 | 36.9 | 54.0 | 約 28.4 |
+| 改動後 baseline | 31.6 | 32.5 | 41.0 | 25.8 |
+| 改動後 strict-memory（`SFR_STRICT_MEMORY=1`） | 30.6 | 33.7 | 43.2 | 26.5 |
+
+- 平均 **+22%**，P95 從 54 ms 降到 41 ms，卡頓明顯變少。這是第一批（記憶體與向量快速路徑、平坦的
+  間接呼叫表、檢查點間隔）與暫存器區域變數合起來的效果，這次沒有分開量。
+- 一般儲存略過保留／釘住檢查（非 strict）約值 3%。
+- 剖析：遊戲生成碼 37.0%、執行檔以外 29.6%、畫圖 17.4%、客體記憶體 5.8%。剩下的 `__savegprlr_*`
+  約 1.3%，`load/store_vector_memory` 約 2.4%，`native_draw` 3.7%。
