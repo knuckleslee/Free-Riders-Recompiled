@@ -386,8 +386,10 @@ CPU 與 GPU 型號本身仍然說明你用什麼硬體；送出前請自己打�
 在 i7（約每步 13 秒）上不會有任何影響。**這個改動要重新編譯。**
 
 更新已經做好的 kit（只換程式與腳本，不重送遊戲）：在編好的那台執行
-`.\scripts\make_benchmark_kit.ps1 -UpdateOnly -Destination C:\Users\<你>\Documents\sfr-benchmark-update`，
-把產生的 `.zip` 解開、覆蓋到另一台的 kit 資料夾（其中的著色器包、DXC、遊戲與舊結果都不會動）。
+`.\scripts\make_benchmark_kit.ps1 -UpdateOnly -Destination X:\sfr-benchmark-kit`，
+它直接把有變動的檔案（比對內容，相同的不動）複製進那個 kit 資料夾，不產生壓縮包，也不刪任何東西
+（著色器包、DXC、遊戲、舊結果與 `save` 都不會動），結尾列出這次換了哪些檔案。目的資料夾必須已經存在；
+還沒有 kit 的機器才用不加 `-UpdateOnly` 的完整版。
 `make_benchmark_kit.ps1` 會在結尾列出這個 kit 該有的東西哪些在、哪些缺（`ok`／`MISSING`／`absent`），
 並且不會刪除含有 `out\bench` 結果的資料夾。
 

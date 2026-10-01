@@ -3,9 +3,10 @@
 #
 #   scripts\make_benchmark_kit.ps1                  # kit without the game
 #   scripts\make_benchmark_kit.ps1 -IncludeGame     # with your copy of the game (large)
-#   scripts\make_benchmark_kit.ps1 -UpdateOnly      # only the program and the scripts: unzip it over a kit
-#                                                   # an earlier run of this made (the shader pack, the DXC and
-#                                                   # the game are already there)
+#   scripts\make_benchmark_kit.ps1 -UpdateOnly -Destination X:\sfr-benchmark-kit
+#       # copies only the program and the scripts that changed, in place, over a kit an
+#       # earlier run of this made (the shader pack, the DXC, the game and the results
+#       # there are left alone, nothing is deleted, no zip)
 #   scripts\make_benchmark_kit.ps1 -DxcDirectory D:\dxc   # use this folder's dxcompiler.dll and dxil.dll
 #
 # On the other PC, unzip it and double-click run_benchmark.bat. Without -IncludeGame
@@ -26,7 +27,10 @@ $host_dir = Join-Path $root 'out/build/host'
 if (-not (Test-Path -LiteralPath (Join-Path $host_dir 'sfr_cpu_diagnostic.exe'))) {
     throw "Build first: scripts\build_tools.ps1 -Diagnostic (missing sfr_cpu_diagnostic.exe)"
 }
-if (Test-Path -LiteralPath $Destination) {
+if ($UpdateOnly) {
+    if (-not (Test-Path -LiteralPath $Destination)) { throw "$Destination does not exist: make a whole kit first (without -UpdateOnly)." }
+    $NoZip = $true
+} elseif (Test-Path -LiteralPath $Destination) {
     # A kit that has been run holds its results: never delete those along with it.
     if (Test-Path -LiteralPath (Join-Path $Destination 'out/bench')) {
         throw "$Destination holds benchmark results (out\bench). Move them away, or choose another -Destination."
@@ -34,12 +38,28 @@ if (Test-Path -LiteralPath $Destination) {
     Remove-Item -Recurse -Force -LiteralPath $Destination
 }
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+$updated = [System.Collections.Generic.List[string]]::new()
 
 function Copy-Into([string]$relative, [string[]]$exclude = @()) {
     $from = Join-Path $root $relative
     if (-not (Test-Path -LiteralPath $from)) { return $false }
     $to = Join-Path $Destination $relative
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $to) | Out-Null
+    if ($UpdateOnly) {
+        # In place: only the files that differ, and nothing the kit made while running
+        $sources = if ((Get-Item -LiteralPath $from).PSIsContainer) { Get-ChildItem -LiteralPath $from -Recurse -File } else { @(Get-Item -LiteralPath $from) }
+        foreach ($file in $sources) {
+            $name = $file.Name
+            if ($exclude | Where-Object { $name -like $_ }) { continue }
+            if ($file.FullName -match '[\\/]save[\\/]') { continue }
+            $target = Join-Path $Destination ($file.FullName.Substring($root.Length).TrimStart('\', '/'))
+            if ((Test-Path -LiteralPath $target) -and (Get-FileHash -LiteralPath $target).Hash -eq (Get-FileHash -LiteralPath $file.FullName).Hash) { continue }
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+            Copy-Item -Force -LiteralPath $file.FullName -Destination $target
+            $updated.Add($target.Substring($Destination.Length).TrimStart('\', '/'))
+        }
+        return $true
+    }
     if ((Get-Item -LiteralPath $from).PSIsContainer) {
         Copy-Item -Recurse -Force -LiteralPath $from -Destination $to -Exclude $exclude
         if ($exclude.Count) {
@@ -115,6 +135,9 @@ foreach ($need in $needs) {
     Write-Output "  [$mark] $($need[0])"
 }
 $size = [math]::Round((Get-ChildItem -Recurse -File -LiteralPath $Destination | Measure-Object Length -Sum).Sum / 1MB)
+if ($UpdateOnly) {
+    if ($updated.Count) { Write-Output "Updated in ${Destination}:"; $updated | ForEach-Object { Write-Output "  $_" } } else { Write-Output "Already up to date: $Destination" }
+}
 Write-Output "Kit folder: $Destination ($size MB)"
 if (-not $NoZip -and (Get-Command tar -ErrorAction SilentlyContinue)) {
     $zip = "$Destination.zip"
@@ -122,4 +145,4 @@ if (-not $NoZip -and (Get-Command tar -ErrorAction SilentlyContinue)) {
     & tar -a -c -f $zip -C $Destination .
     if (Test-Path -LiteralPath $zip) { Write-Output "Kit zip:    $zip" }
 }
-Write-Output 'On the other PC: unzip, then double-click run_benchmark.bat'
+if (-not $UpdateOnly) { Write-Output 'On the other PC: unzip, then double-click run_benchmark.bat' }
