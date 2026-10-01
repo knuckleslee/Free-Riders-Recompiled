@@ -151,6 +151,7 @@ if (Test-Path -LiteralPath $cache) {
 }
 # What else decides the numbers on this PC: the driver, the power plan, mains or battery,
 # and whether something else is busy before the first run starts.
+$model = try { $system = Get-CimInstance Win32_ComputerSystem; "$($system.Manufacturer) $($system.Model)" } catch { 'unknown' }
 $driver = try { (Get-CimInstance Win32_VideoController | ForEach-Object { "$($_.Name) $($_.DriverVersion)" }) -join '; ' } catch { 'unknown' }
 $plan = try { ((powercfg /getactivescheme) -join ' ') -replace '^.*\(([^)]*)\).*$', '$1' } catch { 'unknown' }
 $battery = try { Get-CimInstance Win32_Battery -ErrorAction Stop } catch { $null }
@@ -160,7 +161,7 @@ $idle = [math]::Round(($samples | Measure-Object -Average).Average)
 if ($idle -gt 15) { Write-Warning "This PC is $idle% busy before the benchmark starts: close what is running, or the numbers will carry it." }
 if ($power -eq 'ON BATTERY') { Write-Warning 'On battery: plug in, or the CPU and GPU will not run at full speed.' }
 Write-Output "PC: $power, power plan '$plan', $idle% busy before the start"
-@("commit=$commit", "generated=$generated", "cpu=$cpu", "gpu=$gpu", "driver=$driver", "power=$power plan=$plan idle_cpu_percent=$idle",
+@("commit=$commit", "generated=$generated", "model=$model", "cpu=$cpu", "gpu=$gpu", "driver=$driver", "power=$power plan=$plan idle_cpu_percent=$idle",
   "cold_pipelines=$([bool]$ColdPipelines)", "os=$([Environment]::OSVersion.VersionString)",
   "configs=$($Configs -join ',') repeats=$Repeats present_limit=$PresentLimit capped=$([bool]$Capped)",
   "say=$Say") | Set-Content -LiteralPath (Join-Path $Out 'info.txt') -Encoding UTF8

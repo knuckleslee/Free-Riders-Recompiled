@@ -7,7 +7,7 @@
 | Q1 | 渲染執行緒（C）讓一格更快嗎？ | `baseline` 對 `no-render-thread` | 沒有。上次那組其實量到的是舊執行檔 |
 | Q2 | 暫停通知（作者 `5653352`）有差嗎？ | `baseline` 對 `no-suspend-notify` | 作者的桌機只量到喚醒延遲 1.2 ms → 5 µs，fps 差異「未確立」 |
 | Q3 | 新玩家的第一場比賽，作者的 pipeline 預先準備能減少編譯卡頓嗎？ | `pipelines` 模式：`baseline` 對 `no-prewarm`，每趟都從乾淨的 `pipeline-cache` 開始 | 作者在 Ally 上：最大單格 2,940 → 217 ms；我們的環境還沒有量過 |
-| Q4 | 不同機器的結果一致嗎？ | 同樣兩個模式在機器 A、B 各跑一次 | A：i7-6850K／RTX 3080 Ti；B：Ryzen AI MAX+ 395／Radeon 8060S |
+| Q4 | 不同機器的結果一致嗎？ | 同樣兩個模式在機器 A、B 各跑一次 | A：i7-6850K／RTX 3080 Ti；B：ROG Flow Z13-KJP（Ryzen AI MAX+ 395／Radeon 8060S，內顯） |
 
 ## 設計
 
