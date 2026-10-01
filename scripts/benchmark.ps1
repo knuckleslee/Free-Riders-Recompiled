@@ -18,6 +18,9 @@ param(
     # gear. By present 12000 the race is running.
     [string]$Say = 'ok@2200,ok@2600,ok@3000,start@3400,ok@3800,right@4600,right@5000,right@5400,right@5800,right@6200,ok@6600,ok@7400,ok@8200,ok@9000,ok@9800,ok@10600,ok@11400',
     [int]$PresentLimit = 15600,
+    [switch]$Stretch,                 # the words wait for the clock (-ReferenceFps) and the run ends -AfterSay presents after the last
+    [double]$ReferenceFps = 30,
+    [int]$AfterSay = 4200,
     [int]$Skip = 600,                 # race frames left out at the start
     [int]$TimeoutMinutes = 25,        # a run that takes longer is stopped
     [int]$ScreenshotEvery = 0,         # a screenshot every N presents in every run (a diagnostic: it slows the run)
@@ -36,6 +39,9 @@ if (-not $env:SFR_DXC_LIBRARY -and (Test-Path -LiteralPath (Join-Path $root 'dxc
 $host_dir = Join-Path $root 'out/build/host'
 $exe = Join-Path $host_dir 'sfr_cpu_diagnostic.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw "Build first: scripts\build_tools.ps1 -Diagnostic (missing $exe)" }
+if ($Stretch -and -not [System.Text.Encoding]::GetEncoding(28591).GetString([System.IO.File]::ReadAllBytes($exe)).Contains('SFR_PRESENT_LIMIT_AFTER_SAY')) {
+    throw "$exe is older than -Stretch (no SFR_PRESENT_LIMIT_AFTER_SAY): build again, or take the program from a new kit"
+}
 # A build that failed leaves the last good executable behind, and a benchmark of
 # it would be taken for one of the sources checked out now.
 $src = Join-Path $root 'src'
@@ -120,6 +126,15 @@ $base = [ordered]@{
     # and a run may never reach the race (8 of 19 on a Ryzen AI MAX+ 395).
     SFR_SAY_MIN_SECONDS = '3'
 }
+if ($Stretch) {
+    # Loading takes seconds, not presents (a PC presents hundreds of frames a second while the title
+    # loads), so a word keyed by presents may be said before the menu listens, and a limit by presents
+    # may come before the race. Each word waits for P/ReferenceFps seconds; the run ends AfterSay
+    # presents after the last word, with the present limit left as a backstop.
+    $base['SFR_SAY_REFERENCE_FPS'] = "$ReferenceFps"
+    $base['SFR_PRESENT_LIMIT_AFTER_SAY'] = "$AfterSay"
+    if (-not $PSBoundParameters.ContainsKey('PresentLimit')) { $base['SFR_PRESENT_LIMIT'] = '60000' }
+}
 # Left unset, whatever this console has: the Kinect, the voice, a second
 # player, the per-setting switches and the investigation aids.
 $cleared = @('SFR_CAMERA', 'SFR_VOICE', 'SFR_INPUT_SCRIPT', 'SFR_INPUT_SCRIPT_2', 'SFR_GRAPHICS', 'SFR_HOST_PROCESSORS',
@@ -166,7 +181,7 @@ if ($power -eq 'ON BATTERY') { Write-Warning 'On battery: plug in, or the CPU an
 Write-Output "PC: $power, power plan '$plan', $idle% busy before the start"
 @("commit=$commit", "generated=$generated", "model=$model", "cpu=$cpu", "gpu=$gpu", "driver=$driver", "power=$power plan=$plan idle_cpu_percent=$idle",
   "cold_pipelines=$([bool]$ColdPipelines)", "os=$([Environment]::OSVersion.VersionString)",
-  "configs=$($Configs -join ',') repeats=$Repeats present_limit=$PresentLimit capped=$([bool]$Capped)",
+  "configs=$($Configs -join ',') repeats=$Repeats present_limit=$PresentLimit stretch=$([bool]$Stretch) capped=$([bool]$Capped)",
   "say=$Say") | Set-Content -LiteralPath (Join-Path $Out 'info.txt') -Encoding UTF8
 
 if ($generated -and (Test-Path -LiteralPath (Join-Path $generated 'localize_report.json'))) {

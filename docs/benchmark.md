@@ -396,3 +396,15 @@ CPU 與 GPU 型號本身仍然說明你用什麼硬體；送出前請自己打�
 試過讓選單字依 FPS 等比例拉長（`SFR_SAY_REFERENCE_FPS`、`SFR_PRESENT_LIMIT_AFTER_SAY`），
 benchmark 現在回到原本的做法：字依 present 次數說、至少間隔 3 秒，`-PresentLimit`（預設 15600）結束。
 這兩個環境變數還留在程式裡，需要時可手動設定，benchmark 不再使用。
+
+### 兩種沒進比賽的原因（i7、i5 的 log）與 `-Stretch`
+
+每一格的 `frame_ms` 加起來顯示：標題載入時，PC 每秒送出上百格（i5 的 baseline 15600 格只用了約 27 秒），
+載入卻要幾秒的真實時間。所以：
+
+- i7：17 個字照 present 排程全說了，但前幾個 `ok` 說得太早，標題還沒在聽（沒有出現兩個對話框，`box=0`），後面全錯位。
+- i5：標題要到第 11000～15000 格才開始聽，字才說到一半，第 15600 格的上限就到了（說了 6～8 個字，`box=2`）。
+
+`-Stretch`（`run_benchmark.bat speed 2 stretch`）同時處理兩者：每個字等 P/30 秒才說，說完最後一個字後再跑 4200 格才結束
+（15600 格的上限只留作 60000 的保險）。預設仍是原本的做法。這需要程式裡有 `SFR_PRESENT_LIMIT_AFTER_SAY`（8140e9b 之後編的），
+舊的 exe 會被擋下。

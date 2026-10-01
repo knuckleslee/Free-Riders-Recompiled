@@ -3,6 +3,7 @@ rem Runs the benchmark on this PC and leaves a copy that is safe to send to othe
 rem   run_benchmark.bat speed        render thread and suspend notification, 6 rounds (about 3 hours)
 rem   run_benchmark.bat pipelines    a new player first race, with and without the prepared pipelines
 rem   run_benchmark.bat speed 8      the same with 8 rounds
+rem   run_benchmark.bat speed 2 stretch   the menu words wait for the clock, not only the presents
 setlocal
 cd /d "%~dp0"
 rem An empty src folder lets an older benchmark.ps1 skip its check of the sources
@@ -18,6 +19,7 @@ if /i "%MODE%"=="pipelines" (
     set EXTRA=-ColdPipelines
     if "%2"=="" set REPEATS=4
 )
+if /i "%3"=="stretch" set EXTRA=%EXTRA% -Stretch
 if not exist "out\build\host\sfr_cpu_diagnostic.exe" goto noexe
 set GAMEARGS=
 rem The DXC the renderer links pixel shaders with, when the kit carries one
