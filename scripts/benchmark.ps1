@@ -23,6 +23,7 @@ param(
     [switch]$NoWarmup,                # the first run fills the shader caches
     [switch]$SkipBuildCheck,          # a copied folder (no git): its files' times say nothing about the build
     [switch]$Capped,                  # 60 fps as when playing, not as fast as it goes
+    [switch]$ColdPipelines,           # every run starts without pipeline-cache: a new player's first race
     [string]$ImageDirectory = '',     # the game folders, when they are not where this checkout keeps them
     [string]$AssetDirectory = '',
     [string]$Out = ''
@@ -145,7 +146,19 @@ if (Test-Path -LiteralPath $cache) {
     $line = Select-String -LiteralPath $cache -Pattern '^SFR_DIAGNOSTIC_DIR:[A-Z]+=(.*)$' | Select-Object -First 1
     if ($line) { $generated = $line.Matches[0].Groups[1].Value }
 }
-@("commit=$commit", "generated=$generated", "cpu=$cpu", "gpu=$gpu", "os=$([Environment]::OSVersion.VersionString)",
+# What else decides the numbers on this PC: the driver, the power plan, mains or battery,
+# and whether something else is busy before the first run starts.
+$driver = try { (Get-CimInstance Win32_VideoController | ForEach-Object { "$($_.Name) $($_.DriverVersion)" }) -join '; ' } catch { 'unknown' }
+$plan = try { ((powercfg /getactivescheme) -join ' ') -replace '^.*\(([^)]*)\).*$', '$1' } catch { 'unknown' }
+$battery = try { Get-CimInstance Win32_Battery -ErrorAction Stop } catch { $null }
+$power = if (-not $battery) { 'no battery (desktop)' } elseif ($battery.BatteryStatus -in 2, 6, 7, 8, 9) { 'on mains' } else { 'ON BATTERY' }
+$samples = @(1..5 | ForEach-Object { Start-Sleep -Seconds 1; try { (Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average } catch { 0 } })
+$idle = [math]::Round(($samples | Measure-Object -Average).Average)
+if ($idle -gt 15) { Write-Warning "This PC is $idle% busy before the benchmark starts: close what is running, or the numbers will carry it." }
+if ($power -eq 'ON BATTERY') { Write-Warning 'On battery: plug in, or the CPU and GPU will not run at full speed.' }
+Write-Output "PC: $power, power plan '$plan', $idle% busy before the start"
+@("commit=$commit", "generated=$generated", "cpu=$cpu", "gpu=$gpu", "driver=$driver", "power=$power plan=$plan idle_cpu_percent=$idle",
+  "cold_pipelines=$([bool]$ColdPipelines)", "os=$([Environment]::OSVersion.VersionString)",
   "configs=$($Configs -join ',') repeats=$Repeats present_limit=$PresentLimit capped=$([bool]$Capped)",
   "say=$Say") | Set-Content -LiteralPath (Join-Path $Out 'info.txt') -Encoding UTF8
 
@@ -170,6 +183,7 @@ function Start-Run([string]$name, [int]$repeat) {
     if ((Test-Path -LiteralPath $shipped) -and -not (Test-Path -LiteralPath (Join-Path $root "out/shaders/pipelines-$backend.manifest"))) {
         $env:SFR_PIPELINE_MANIFEST = $shipped
     }
+    if ($ColdPipelines) { Remove-Item -Recurse -Force -LiteralPath (Join-Path $root 'pipeline-cache') -ErrorAction SilentlyContinue }
     $label = "$name-$repeat"
     # A fresh copy of the save each run: the same menus every time, and the
     # player's own save is never written.

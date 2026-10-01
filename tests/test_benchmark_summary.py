@@ -56,12 +56,58 @@ class BenchmarkSummaryTest(unittest.TestCase):
             write_log(directory, 'skip-draws-1.log', 20)
             table, rows = bench.summarise(directory, skip=0)
             self.assertEqual(sorted({row[0] for row in rows}), ['baseline', 'skip-draws', 'warmup'])
-            self.assertIn('| baseline | 2 | 25.0 | 40.0 | 40.0 | +0% |', table)
-            self.assertIn('| skip-draws | 1 | 50.0 | 20.0 | 20.0 | +100% |', table)
+            self.assertIn('| baseline | 2 | 25.0 | 40.0 | 40.0 | 0 | +0% |', table)
+            self.assertIn('| skip-draws | 1 | 50.0 | 20.0 | 20.0 | 0 | +100% |', table)
             # The warm-up is listed with the runs but not compared.
-            runs, comparison = table.split('\n\n')
+            runs, comparison = table.split('\n\n', 1)
             self.assertIn('| warmup | 1 | 20.0', runs)
             self.assertNotIn('warmup', comparison)
+
+    def test_a_setting_is_called_faster_only_when_most_rounds_agree_and_it_beats_the_noise(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for repeat, (base, fast, noisy) in enumerate([(40, 30, 40), (41, 31, 36), (39, 29, 44), (40, 30, 38), (40, 30, 42)], 1):
+                write_log(directory, f'baseline-{repeat}.log', base)
+                write_log(directory, f'fast-{repeat}.log', fast)
+                write_log(directory, f'noisy-{repeat}.log', noisy)
+            table, _ = bench.summarise(directory, skip=0)
+            paired = [line for line in table.splitlines() if '/5 |' in line]
+            fast_row = next(line for line in paired if line.startswith('| fast |'))
+            noisy_row = next(line for line in paired if line.startswith('| noisy |'))
+            self.assertIn('較快', fast_row)
+            self.assertIn('5/5', fast_row)
+            self.assertIn('不能判定', noisy_row)
+
+    def test_too_few_rounds_prove_nothing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for repeat in (1, 2):
+                write_log(directory, f'baseline-{repeat}.log', 40)
+                write_log(directory, f'fast-{repeat}.log', 20)
+            table, _ = bench.summarise(directory, skip=0)
+            self.assertIn('輪數不足', table)
+
+    def test_a_run_that_did_not_reach_the_limit_or_raced_less_is_left_out_of_the_comparison(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for repeat in range(1, 5):
+                write_log(directory, f'baseline-{repeat}.log', 40, race=100)
+            write_log(directory, 'crashed-1.log', 40, race=100, stop='STOP native-draw @0x7e: boom')
+            write_log(directory, 'short-1.log', 40, race=60)
+            table, _ = bench.summarise(directory, skip=0)
+            self.assertIn('以下幾趟不納入比較', table)
+            self.assertIn('crashed-1', table.split('以下幾趟不納入比較')[1])
+            self.assertIn('short-1', table.split('以下幾趟不納入比較')[1])
+            comparison = table.split('\n\n', 1)[1]
+            self.assertNotIn('| crashed |', comparison)
+
+    def test_long_frames_and_compile_hitches_are_counted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lines, seconds = [], 0.0
+            for frame, (ms, pipeline_ms) in enumerate([(16, 0), (40, 0), (60, 0), (90, 0), (150, 80), (20, 3)]):
+                seconds += ms / 1000
+                lines.append(present(frame, seconds, 1, pipelines=2 if pipeline_ms else 0, pipeline_ms=pipeline_ms))
+            (Path(directory) / 'baseline-1.log').write_text(''.join(lines) + 'STOP present-limit @0x0: x\n', encoding='utf-8')
+            frames, _, _ = bench.read_run(Path(directory) / 'baseline-1.log', skip=0)
+            stats = bench.describe(frames)
+            self.assertEqual((stats['slow50'], stats['slow80'], stats['hitch30'], stats['pipelines']), (3, 2, 1, 4))
 
     def test_sums_what_the_main_thread_queued_behind_during_the_race(self):
         with tempfile.TemporaryDirectory() as directory:

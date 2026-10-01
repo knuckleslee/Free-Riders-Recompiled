@@ -1,13 +1,23 @@
 @echo off
 rem Runs the benchmark on this PC and leaves a copy that is safe to send to others.
-rem   run_benchmark.bat        3 runs of each setting
-rem   run_benchmark.bat 6      6 runs of each setting
+rem   run_benchmark.bat speed        render thread and suspend notification, 6 rounds (about 3 hours)
+rem   run_benchmark.bat pipelines    a new player first race, with and without the prepared pipelines
+rem   run_benchmark.bat speed 8      the same with 8 rounds
 setlocal
 cd /d "%~dp0"
 rem An empty src folder lets an older benchmark.ps1 skip its check of the sources
 if not exist "src" mkdir "src"
-set REPEATS=%1
-if "%REPEATS%"=="" set REPEATS=3
+set MODE=%1
+if "%MODE%"=="" set MODE=speed
+set REPEATS=%2
+set CONFIGS=baseline,no-render-thread,no-suspend-notify
+set EXTRA=
+if "%REPEATS%"=="" set REPEATS=6
+if /i "%MODE%"=="pipelines" (
+    set CONFIGS=baseline,no-prewarm
+    set EXTRA=-ColdPipelines
+    if "%2"=="" set REPEATS=4
+)
 if not exist "out\build\host\sfr_cpu_diagnostic.exe" goto noexe
 set GAMEARGS=
 rem The DXC the renderer links pixel shaders with, when the kit carries one
@@ -21,9 +31,9 @@ set GAMEARGS=-ImageDirectory "%IMAGE%" -AssetDirectory "%ASSETS%"
 :run
 echo.
 echo The benchmark plays the game by itself. Do not use this PC and close other programs
-echo until it says it is done. %REPEATS% runs of each setting.
+echo until it says it is done. Mode %MODE%, %REPEATS% rounds.
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\benchmark.ps1" -SkipBuildCheck -Configs baseline,no-render-thread,no-prewarm,no-suspend-notify -Repeats %REPEATS% %GAMEARGS%
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\benchmark.ps1" -SkipBuildCheck -Configs %CONFIGS% -Repeats %REPEATS% %EXTRA% %GAMEARGS%
 echo.
 set LATEST=
 for /f "delims=" %%Z in ('dir /b /o-d "out\bench\*-shareable.zip" 2^>nul') do (
