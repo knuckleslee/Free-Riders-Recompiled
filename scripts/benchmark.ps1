@@ -16,7 +16,7 @@ param(
     # The menu words and the presents they are said at: title, main menu,
     # five turns of the ring to Free Race, then rules, course, character and
     # gear. By present 12000 the race is running.
-    [string]$Say = 'ok@1750,ok@2150,ok@2550,start@3400,ok@3800,right@4600,right@5000,right@5400,right@5800,right@6200,ok@6600,ok@7400,ok@8200,ok@9000,ok@9800,ok@10600,ok@11400',
+    [string]$Say = 'ok@1750,ok@2100,ok@2450,start@2800,ok@3000,right@3200,right@3400,right@3600,right@3800,right@4000,ok@4200,ok@4500,ok@4800,ok@5100,ok@5400,ok@5700,ok@6000,ok@6300',
     [int]$PresentLimit = 15600,
     [switch]$NoStretch,               # the words by presents alone and the run ends at -PresentLimit (it cannot finish on a PC that presents fast)
     [double]$ReferenceFps = 100,
@@ -125,7 +125,7 @@ $base = [ordered]@{
     SFR_NUI_HAND_CENTRED = '1'; SFR_SAY = $Say; SFR_PRESENT_LIMIT = "$PresentLimit"
     # The menus take time on the wall clock: on a fast PC a script by presents alone speaks too early
     # and a run may never reach the race (8 of 19 on a Ryzen AI MAX+ 395).
-    SFR_SAY_MIN_SECONDS = '3'
+    SFR_SAY_MIN_SECONDS = '2'
 }
 if ($Stretch) {
     # Loading takes seconds, not presents (a PC presents hundreds of frames a second while the title
