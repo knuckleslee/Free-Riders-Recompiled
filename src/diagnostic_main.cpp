@@ -8,6 +8,7 @@
 #include "system_time.h"
 #include "host_timing.h"
 #include "guest_clock.h"
+#include "guest_function_table.h"
 #include "timestamp_bundle.h"
 #include "vector_memory.h"
 #include "optional_import_policy.h"
@@ -110,11 +111,7 @@ static uint64_t host_thread_id() {
 #endif
 }
 GuestMemory* active_memory = nullptr;
-static std::unordered_map<uint32_t, PPCFunc*> functions;
-// The same, indexed by (address - PPC_CODE_BASE) / 4: an indirect call looks
-// its target up once, as XenonRecomp's own PPC_LOOKUP_FUNC does, instead of
-// hashing into the map (a race profile's call_indirect, docs/benchmark.md).
-static std::vector<PPCFunc*> function_table;
+static GuestFunctionTable<PPCFunc> functions;
 // Names come from string literals (generated code and hooks): keep the pointer,
 // as copying the name at every guest function entry cost a race frame ~1.5%.
 static std::atomic<bool> stack_dump_requested{false};
@@ -344,6 +341,7 @@ static GuestCriticalSections* critical_sections = nullptr;
 static thread_local GuestExecution::Lease* execution_permit = nullptr;
 static thread_local const PPCContext* current_context = nullptr;
 static thread_local uint32_t current_pcr = diagnostic_pcr, current_thread = diagnostic_thread, current_id = 1;
+uint32_t current_guest_thread_id() { return current_id; }
 static thread_local uint32_t current_tls = ThreadLocalStorage::static_address, current_tls_dynamic = 0;
 
 // What each guest thread is doing when nothing moves any more. A hang leaves
@@ -417,7 +415,7 @@ std::array<GuestExecution::Timing, 7> take_guest_execution_timings() {
 static thread_local std::unique_ptr<GuestExecution::Lease> core_permit;
 static thread_local unsigned core_index = 0;
 static constexpr uint32_t parallel_worker_entry = 0x8222E008;
-// A parallel guest's three flags live in guest_entry (diagnostic_hooks.h)
+// A parallel guest's three flags live in guest_thread_state.entry (diagnostic_hooks.h)
 // beside the rest of what a function entry reads, so that an entry resolves
 // one thread_local rather than seven:
 //   parallel            -- running beside the permit rather than holding it
@@ -496,11 +494,11 @@ static void parallel_slow_access(uint64_t address) {
         const uint64_t count = ++pages[uint32_t(address >> 12)];
         if ((count & (count - 1)) == 0 && count >= 256)
             std::cerr << "PARALLEL_SLOW page=0x" << std::hex << (address >> 12) << "000 address=0x" << address
-                      << std::dec << " count=" << count << " function=" << guest_entry.current_function << char(10);
+                      << std::dec << " count=" << count << " function=" << guest_thread_state.entry.current_function << char(10);
     }
     execution_permit->attach();
     parallel_attached(2, uint32_t(address & ~uint64_t(0xFFF)));
-    guest_entry.detach_at_entry = true;
+    guest_thread_state.entry.detach_at_entry = true;
 }
 
 static void parallel_function_entry(const PPCContext& ctx, uint32_t address) {
@@ -508,16 +506,16 @@ static void parallel_function_entry(const PPCContext& ctx, uint32_t address) {
         if (!is_hook(address)) return;
         execution_permit->attach();
         parallel_attached(1, address);
-        guest_entry.hook_stack_pointer = ctx.r1.u32;
-    } else if (guest_entry.hook_stack_pointer) {
-        if (is_hook(address)) guest_entry.hook_stack_pointer = (std::max)(guest_entry.hook_stack_pointer, ctx.r1.u32);
-        else if (ctx.r1.u32 > guest_entry.hook_stack_pointer) {
-            guest_entry.hook_stack_pointer = 0;
+        guest_thread_state.entry.hook_stack_pointer = ctx.r1.u32;
+    } else if (guest_thread_state.entry.hook_stack_pointer) {
+        if (is_hook(address)) guest_thread_state.entry.hook_stack_pointer = (std::max)(guest_thread_state.entry.hook_stack_pointer, ctx.r1.u32);
+        else if (ctx.r1.u32 > guest_thread_state.entry.hook_stack_pointer) {
+            guest_thread_state.entry.hook_stack_pointer = 0;
             parallel_detach();
         }
-    } else if (guest_entry.detach_at_entry) {
-        guest_entry.detach_at_entry = false;
-        if (is_hook(address)) guest_entry.hook_stack_pointer = ctx.r1.u32;
+    } else if (guest_thread_state.entry.detach_at_entry) {
+        guest_thread_state.entry.detach_at_entry = false;
+        if (is_hook(address)) guest_thread_state.entry.hook_stack_pointer = ctx.r1.u32;
         else parallel_detach();
     }
 }
@@ -561,7 +559,7 @@ void guest_checkpoint_permit() {
     // One call in 256 entries and loop labels (it was 32): the permit itself
     // looks at the time only every 64th call, still far inside its 2 ms
     // quantum, and the call was over 1% of a race frame (docs/benchmark.md).
-    guest_entry.checkpoint_countdown = 255;
+    guest_thread_state.entry.checkpoint_countdown = 255;
     if (!execution_permit) throw std::logic_error("guest instruction without execution permit");
     // Validates ownership and cancellation before shared memory access, and
     // hands off only outside a reservation.
@@ -934,7 +932,7 @@ void wait_without_permit(void (*wait)(void*), void* argument) {
 void traced_host_wait(void (*wait)(void*), void* argument, const char* kind, int64_t timeout_ns) {
     if (!execution_permit) { wait(argument); return; }
     block_guest([&](std::stop_token) { wait(argument); },
-        {kind, current_context ? uint32_t(current_context->lr) : 0, {guest_entry.current_address}, timeout_ns});
+        {kind, current_context ? uint32_t(current_context->lr) : 0, {guest_thread_state.entry.current_address}, timeout_ns});
 }
 
 // Who resumed a created-suspended thread, and how many times that resumer
@@ -999,7 +997,7 @@ void dispatch_import(PPCContext& ctx, const char* name, uint32_t address) {
         }
         return;
     }
-    if (!guest_entry.parallel || !execution_permit->detached()) return dispatch_import_owned(ctx, name, address);
+    if (!guest_thread_state.entry.parallel || !execution_permit->detached()) return dispatch_import_owned(ctx, name, address);
     // Imports a detached guest runs as it is: critical sections keep their
     // own lock (contended waits attach unless the experiment is enabled), a TLS value lives
     // in the calling thread's own bank, and the process type is a constant.
@@ -1045,7 +1043,7 @@ void dispatch_import(PPCContext& ctx, const char* name, uint32_t address) {
         }
     }
     dispatch_import_owned(ctx, name, address);
-    if (!execution_permit->detached() && !guest_entry.hook_stack_pointer && !guest_entry.detach_at_entry) parallel_detach();
+    if (!execution_permit->detached() && !guest_thread_state.entry.hook_stack_pointer && !guest_thread_state.entry.detach_at_entry) parallel_detach();
 }
 // Completes an XOVERLAPPED at once: InternalLow = result, InternalHigh =
 // length, extended error 0, then its event (if any) is set. Returns
@@ -3019,20 +3017,20 @@ const bool diagnostic_entries = [] {
 // What makes a thread's entries take enter_function_observed.
 // Recomputed whenever one of the things it reads changes.
 static void refresh_entry_observation() {
-    guest_entry.watched = diagnostic_entries || guest_reach || unselected_user.active;
-    guest_entry.observed = guest_entry.parallel || guest_entry.watched;
+    guest_thread_state.entry.watched = diagnostic_entries || guest_reach || unselected_user.active;
+    guest_thread_state.entry.observed = guest_thread_state.entry.parallel || guest_thread_state.entry.watched;
 }
 
 void enter_function_observed(PPCContext& ctx, const char* name, uint32_t address) {
-    if (guest_entry.parallel) parallel_function_entry(ctx, address);
+    if (guest_thread_state.entry.parallel) parallel_function_entry(ctx, address);
     guest_checkpoint();
     // Cheap enough to keep either way: a stop still names the function it
     // happened in.
-    guest_entry.current_function = name;
-    guest_entry.current_address = address;
+    guest_thread_state.entry.current_function = name;
+    guest_thread_state.entry.current_address = address;
     // A guest playing beside the permit is here for parallel_function_entry
     // and nothing below.
-    if (!guest_entry.watched) [[likely]] return;
+    if (!guest_thread_state.entry.watched) [[likely]] return;
     if (guest_reach && current_id != 1) {
         static thread_local std::unordered_set<uint32_t> reached;
         if (reached.insert(address).second)
@@ -3633,13 +3631,11 @@ void enter_function_observed(PPCContext& ctx, const char* name, uint32_t address
     }
 }
 void call_indirect(PPCContext& ctx, uint8_t* base, uint32_t address) {
-    const uint64_t index = (uint64_t(address) - PPC_CODE_BASE) / 4;
-    PPCFunc* const target = address % 4 == 0 && address >= PPC_CODE_BASE && index < function_table.size()
-        ? function_table[index] : nullptr;
-    if (!target) throw RuntimeStop("indirect-call", address, "no verified function mapping");
+    const auto function = functions.find(address);
+    if (!function) throw RuntimeStop("indirect-call", address, "no verified function mapping");
     const bool user_reset = unselected_user.active && unselected_user.reset_entered &&
-        guest_entry.current_address == 0x82232598 && ctx.lr == 0x82232A30 && ctx.r3.u32 == unselected_user.record + 32;
-    target(ctx, base);
+        guest_thread_state.entry.current_address == 0x82232598 && ctx.lr == 0x82232A30 && ctx.r3.u32 == unselected_user.record + 32;
+    function(ctx, base);
     if (user_reset) unselected_user.reset_virtual = address;
 }
 }
@@ -3797,14 +3793,14 @@ int main(int argc, char** argv) {
                         throw sfr::RuntimeStop("video-global", 0x82000664, "video global context is unavailable");
                     const auto& ctx = *sfr::current_context;
                     sfr::check_reservation_context(ctx);
-                    if (sfr::guest_entry.current_address != 0x824F19E8 || ctx.lr != 0x824F1A04) {
+                    if (sfr::guest_thread_state.entry.current_address != 0x824F19E8 || ctx.lr != 0x824F1A04) {
                         std::cerr << "VIDEO_GLOBAL_UNSUPPORTED_CONTEXT function=0x" << std::hex
-                                  << sfr::guest_entry.current_address << " lr=0x" << ctx.lr << std::dec << '\n';
+                                  << sfr::guest_thread_state.entry.current_address << " lr=0x" << ctx.lr << std::dec << '\n';
                         throw sfr::RuntimeStop("video-global", 0x82000664, "unaudited original device-global consumer");
                     }
                     const auto caller = sfr::active_memory->load<uint32_t>(uint64_t(ctx.r1.u32) + 104);
                     const auto cell = sfr::video_globals->device_cell_for_shared_surface(
-                        ctx.r31.u32, sfr::guest_entry.current_address, static_cast<uint32_t>(ctx.lr), caller);
+                        ctx.r31.u32, sfr::guest_thread_state.entry.current_address, static_cast<uint32_t>(ctx.lr), caller);
                     sfr::shared_surface_release = {ctx.r31.u32, 0, false};
                     if (sfr::trace_imports) std::cerr << "VIDEO_GLOBAL_READ cell=0x" << std::hex << cell
                               << " value=0x" << sfr::active_memory->load<uint32_t>(cell)
@@ -3847,14 +3843,12 @@ int main(int argc, char** argv) {
             ++variable_count;
         }
         if (variable_count == 0) throw std::runtime_error("no import variables registered");
+        sfr::functions = sfr::GuestFunctionTable<PPCFunc>(PPC_CODE_BASE, PPC_CODE_SIZE);
         for (auto* mapping = PPCFuncMappings; mapping->host; ++mapping) {
             if (mapping->guest < PPC_CODE_BASE || mapping->guest >= PPC_CODE_BASE + PPC_CODE_SIZE)
                 throw std::runtime_error("function table address outside guest code");
-            sfr::functions.emplace(static_cast<uint32_t>(mapping->guest), mapping->host);
+            sfr::functions.insert(static_cast<uint32_t>(mapping->guest), mapping->host);
         }
-        sfr::function_table.assign(PPC_CODE_SIZE / 4, nullptr);
-        for (const auto& [guest, host] : sfr::functions)
-            if (guest % 4 == 0) sfr::function_table[(guest - PPC_CODE_BASE) / 4] = host;
         const uint32_t tls_metadata = module.header_field(sfr::XexModule::header_address, 0x20104);
         if (!tls_metadata) throw std::runtime_error("diagnostic requires the title's TLS metadata");
         memory.check(tls_metadata, 16);
@@ -4012,7 +4006,7 @@ int main(int argc, char** argv) {
                                 (sfr::parallel_worker == sfr::ParallelGuests::job_worker &&
                                  state.worker == sfr::parallel_worker_entry))) {
                             std::cerr << "PARALLEL_WORKER guest_id=" << state.id << " processor=" << processor << '\n';
-                            sfr::guest_entry.parallel = true;
+                            sfr::guest_thread_state.entry.parallel = true;
                             sfr::GuestMemory::concurrent_reader = true;
                             sfr::GuestMemory::slow_access_hook = sfr::parallel_slow_access;
                             permit->detach();
@@ -4102,8 +4096,8 @@ int main(int argc, char** argv) {
                         const auto cause = std::current_exception();
                         try {
                             std::ostringstream trace;
-                            trace << error.detail << " [guest_id=" << state.id << " function=" << sfr::guest_entry.current_function
-                                  << " address=0x" << std::hex << sfr::guest_entry.current_address << " LR=0x" << context->lr
+                            trace << error.detail << " [guest_id=" << state.id << " function=" << sfr::guest_thread_state.entry.current_function
+                                  << " address=0x" << std::hex << sfr::guest_thread_state.entry.current_address << " LR=0x" << context->lr
                                   << " r1=0x" << context->r1.u32 << " r3=0x" << context->r3.u32
                                   << " r10=0x" << context->r10.u32 << " r11=0x" << context->r11.u32
                                   << " r29=0x" << context->r29.u32 << " r31=0x" << context->r31.u32
@@ -4317,7 +4311,7 @@ int main(int argc, char** argv) {
         return 4;
     } catch (const sfr::RuntimeStop& error) {
         std::cerr << "STOP " << error.category << " @0x" << std::hex << error.address << ": " << error.detail
-                  << "\nLAST_FUNCTION " << sfr::guest_entry.current_function << " @0x" << sfr::guest_entry.current_address
+                  << "\nLAST_FUNCTION " << sfr::guest_thread_state.entry.current_function << " @0x" << sfr::guest_thread_state.entry.current_address
                   << " LR=0x" << ctx.lr << std::dec << " calls=" << sfr::calls << '\n';
         return 3;
     } catch (const std::exception& error) {
