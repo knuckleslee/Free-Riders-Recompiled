@@ -8,6 +8,7 @@
 #include "native_blend_control.h"
 #include "native_render_state.h"
 #include "native_renderer.h"
+#include "runtime_shader_cache.h"
 #include <plume_render_interface.h>
 #include <algorithm>
 #include <array>
@@ -162,12 +163,7 @@ uint32_t GuestGraphics::discard_commands(uint32_t device, uint32_t& discarded_by
 }
 uint32_t GuestGraphics::create_shader(ShaderStage stage,uint32_t container) {
     if(!impl_) unsupported(container,"native guest device is not created");
-    const auto handle=impl_->shaders->create(stage,container);
-    // The renderer builds pipelines an earlier run recorded as soon as both
-    // their shaders exist (NativeRenderer::note_shader).
-    const auto& shader=impl_->shaders->get(handle);
-    renderer().note_shader(*shader.entry,shader.shader.get());
-    return handle;
+    return impl_->shaders->create(stage,container);
 }
 void GuestGraphics::attach_shader(uint32_t handle, uint32_t object) {
     if(!impl_) unsupported(object,"native guest device is not created");
@@ -557,6 +553,9 @@ uint32_t GuestGraphics::create_device(uint32_t adapter, uint32_t mode, uint32_t 
     memory_.store<uint32_t>(device_address+0x5E88,0x0C000000);
     memory_.store<uint32_t>(output,device_address);
     impl_ = std::move(next);
+    // Hold guest startup until known pipelines are ready. No guest Present or
+    // clock tick is synthesized by the preparation screen.
+    if (runtime_shader_translation) renderer().prepare_pipelines();
     std::cerr << "NATIVE_BLEND_DEFAULTS table=0x82ad0a60 requested=0x" << std::hex
               << blend_defaults.requested << " flags=0x" << blend_defaults.flags
               << " effective=0x" << blend_defaults.effective << std::dec << " targets=4\n";

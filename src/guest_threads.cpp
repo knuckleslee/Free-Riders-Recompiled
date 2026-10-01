@@ -1,6 +1,7 @@
 #include "guest_threads.h"
 #include "guest_memory.h"
 #include "system_time.h"
+#include "host_timing.h"
 #include <algorithm>
 #include <cstdlib>
 #include <bit>
@@ -244,7 +245,7 @@ std::function<void(std::stop_token)> GuestThreads::suspension_waiter(uint32_t ha
     return [record, notify = impl_->suspend_notify](std::stop_token stop) {
         if (!notify) {
             while (!stop.stop_requested() && record->guest_suspends.load(std::memory_order_acquire))
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                precise_sleep(std::chrono::milliseconds(1));
             return;
         }
         std::unique_lock lock(record->suspension_mutex);
@@ -338,7 +339,21 @@ uint32_t GuestThreads::close(uint32_t handle) {
     return 0;
 }
 int32_t GuestThreads::set_priority(uint32_t object, int32_t increment) {
+    // An increment of 16 saturates the thread at the top of its range (the
+    // NT kernel's rule, |increment| >= 16). The title asks it for its
+    // time-critical threads (guests 10, 17, 28, 30 in a race) and gives every
+    // other thread -2..2. This experiment raises those threads one host level;
+    // its scheduling benefit needs device measurements. Pinned Xenia Canary
+    // instead leaves 16 at normal, above this title's 0..2 at lowest, and
+    // raises 17 to above-normal. Negative increments retain
+    // the existing mapping. Opt in with SFR_GUEST_SATURATED_PRIORITY=1 until
+    // device measurements establish a benefit.
+    static const bool saturated_above = [] {
+        const char* setting = std::getenv("SFR_GUEST_SATURATED_PRIORITY");
+        return setting && *setting == '1';
+    }();
     const int32_t host_priority = increment > 34 ? 2 : increment > 17 ? 1 :
+                                  saturated_above && increment >= 16 ? 1 :
                                   increment < -34 ? -2 : increment < -17 ? -1 : 0;
     return impl_->find_object(object).native->set_priority(host_priority);
 }

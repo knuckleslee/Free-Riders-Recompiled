@@ -274,9 +274,16 @@ void object_references_and_native_configuration() {
     const auto initial = threads.priority(object);
     require(threads.set_priority(object, 35) == initial && threads.priority(object) == 2, "high priority uses real host setting");
     require(threads.set_priority(object, -35) == 2 && threads.priority(object) == -2, "low priority returns actual previous setting");
-    for (const int increment : {-17, 0, 17}) {
+    for (const int increment : {-17, 0, 15}) {
         threads.set_priority(object, increment);
         require(threads.priority(object) == 0, "normal priority reference mapping");
+    }
+    const char* priority_setting = std::getenv("SFR_GUEST_SATURATED_PRIORITY");
+    const bool saturated_above = priority_setting && *priority_setting == '1';
+    for (const int increment : {16, 17}) {
+        threads.set_priority(object, increment);
+        require(threads.priority(object) == (saturated_above ? 1 : 0),
+                "saturated guest priority follows the comparison option");
     }
     threads.set_priority(object, 18); require(threads.priority(object) == 1, "above-normal mapping");
     threads.set_priority(object, -18); require(threads.priority(object) == -1, "below-normal mapping");
