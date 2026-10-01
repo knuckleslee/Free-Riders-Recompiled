@@ -4,6 +4,8 @@ rem   run_benchmark.bat        3 runs of each setting
 rem   run_benchmark.bat 6      6 runs of each setting
 setlocal
 cd /d "%~dp0"
+rem An empty src folder lets an older benchmark.ps1 skip its check of the sources
+if not exist "src" mkdir "src"
 set REPEATS=%1
 if "%REPEATS%"=="" set REPEATS=3
 if not exist "out\build\host\sfr_cpu_diagnostic.exe" goto noexe
