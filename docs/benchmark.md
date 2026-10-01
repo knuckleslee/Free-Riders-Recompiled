@@ -329,9 +329,8 @@ CPU 與 GPU 型號本身仍然說明你用什麼硬體；送出前請自己打�
 
 ## 在別台機器跑（不用 git、不用編譯）
 
-1. 在編好的那台：雙擊（或在命令列執行）`package_benchmark.bat D:\sfr-bench`，把整個資料夾複製到
-   隨身碟（排除 `.git`、舊結果與 Linux 建置，並刪掉那台的 `settings.ini`）。複製內容包含你自己的
-   遊戲副本，只放在你自己的機器上。
-2. 在另一台：打開複製過去的資料夾，雙擊 `run_benchmark.bat`（`run_benchmark.bat 6` 可改成每種設定 6 趟）。
+1. 把編好的整個資料夾複製到另一台（自己處理複製；不要帶 `.git`、舊的 `out\bench` 和那台的
+   `out\build\host\settings.ini`）。資料夾內含你自己的遊戲副本，只放在你自己的機器上。
+2. 在另一台：打開資料夾，雙擊 `run_benchmark.bat`（`run_benchmark.bat 6` 可改成每種設定 6 趟）。
    需要 Windows 10 22H2 以上；`py`（Python）有的話會自動產生摘要與去識別化版本。
 3. 跑完它會開啟資料夾並選取 `out\bench\<時間>-shareable.zip`，把這個檔案傳回來。
