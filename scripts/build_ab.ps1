@@ -16,6 +16,14 @@ $host_dir = Join-Path $root 'out/build/host'
 $plain = Join-Path $root 'out/recomp/diagnostic'
 $local = Join-Path $root 'out/recomp/diagnostic-local'
 if (-not (Test-Path -LiteralPath $plain)) { throw "Missing $plain (the generated code: scripts\generate_diagnostic.py)" }
+# The localized copy is made again every time, from the generated code that is here
+# now (an older one may come from before a merge). The tool refuses to write over a
+# folder, so the old one goes first, but only one this tool made (it leaves
+# localize_report.json in it).
+if (Test-Path -LiteralPath $local) {
+    if (-not (Test-Path -LiteralPath (Join-Path $local 'localize_report.json'))) { throw "$local was not made by localize_registers.py: move it away." }
+    Remove-Item -Recurse -Force -LiteralPath $local
+}
 $py = if (Get-Command py -ErrorAction SilentlyContinue) { 'py' } else { 'python' }
 & $py (Join-Path $PSScriptRoot 'localize_registers.py') $plain $local
 if ($LASTEXITCODE -ne 0) { throw 'localize_registers.py failed.' }
