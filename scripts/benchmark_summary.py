@@ -195,7 +195,7 @@ def valid_runs(rows):
         if config == 'warmup':
             continue
         if not stats:
-            problems.append(f'{config}-{repeat}: {ended}')
+            problems.append(f'{config}-{repeat}: 沒有走進比賽，沒有可量的比賽畫面（{ended}）')
         elif 'present-limit' not in ended:
             problems.append(f'{config}-{repeat}: 沒有跑到 present-limit（{ended}）')
         elif abs(stats['frames'] - expected) > EXPECTED_FRAMES_TOLERANCE * expected:

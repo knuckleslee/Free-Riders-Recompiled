@@ -702,8 +702,17 @@ SFR_HOOK(sub_82494658) {
         }
         return said;
     }();
+    // SFR_SAY_MIN_SECONDS=n: a word is also not said sooner than n seconds
+    // after the one before (the first, after the program started). The menus
+    // answer after loading and animations that take time on the wall clock,
+    // not in presents; on a PC that presents them quickly a script by presents
+    // alone speaks too early, and some runs never reach the race.
+    static const double min_seconds=[]{ const char* t=std::getenv("SFR_SAY_MIN_SECONDS"); return t?std::strtod(t,nullptr):0.0; }();
+    static auto last_said=std::chrono::steady_clock::now();
     static size_t said_index=0;
-    if(said_index<script.size() && sfr::present_count>=script[said_index].first) {
+    if(said_index<script.size() && sfr::present_count>=script[said_index].first &&
+       std::chrono::duration<double>(std::chrono::steady_clock::now()-last_said).count()>=min_seconds) {
+        last_said=std::chrono::steady_clock::now();
         const auto& entry=script[said_index++];
         memory.check_write(uint64_t(input)+5440,12);
         memory.store<uint32_t>(uint64_t(input)+5440,sfr::NuiSpeechEmulation::say(memory,entry.second));

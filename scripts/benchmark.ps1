@@ -113,6 +113,9 @@ $base = [ordered]@{
     SFR_FRAME_METRICS = '1'
     SFR_WINDOW_WIDTH = '1280'; SFR_WINDOW_HEIGHT = '720'; SFR_FULLSCREEN = '0'; SFR_VSYNC = '0'
     SFR_NUI_HAND_CENTRED = '1'; SFR_SAY = $Say; SFR_PRESENT_LIMIT = "$PresentLimit"
+    # The menus take time on the wall clock: on a fast PC a script by presents alone speaks too early
+    # and a run may never reach the race (8 of 19 on a Ryzen AI MAX+ 395).
+    SFR_SAY_MIN_SECONDS = '3'
 }
 # Left unset, whatever this console has: the Kinect, the voice, a second
 # player, the per-setting switches and the investigation aids.
