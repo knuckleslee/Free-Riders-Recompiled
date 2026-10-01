@@ -37,7 +37,7 @@
 
 | 指令 | 內容 | 預估時間 |
 | --- | --- | --- |
-| `run_benchmark.bat speed` | 3 種設定 × 6 輪 + warmup，共 19 趟 | 約 3 小時（一趟約 9 分鐘；選單依 30 fps 等比例拉長） |
+| `run_benchmark.bat speed` | 3 種設定 × 6 輪 + warmup，共 19 趟 | 約 3 小時（一趟約 9 分鐘） |
 | `run_benchmark.bat pipelines` | 2 種設定 × 4 輪 + warmup，共 9 趟，冷啟動 | 約 1.5～2 小時 |
 
 跑的時候不要碰那台電腦。`speed` 建議睡前跑。順序建議：A 的 `speed` → A 的 `pipelines`（著色器包準備好後）→ B 的 `speed`。

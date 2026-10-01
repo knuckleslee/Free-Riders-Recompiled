@@ -1,6 +1,6 @@
 # Measures a Free Race without anyone playing: the game starts, says the menu
 # words that reach a race (SFR_SAY, docs/race-controls.md), races with nobody
-# at the controls and stops itself -AfterSay frames after the last word. Each setting
+# at the controls and stops itself after -PresentLimit frames. Each setting
 # in -Configs runs -Repeats times, taking turns, and the race frames of every
 # run are summed up by scripts/benchmark_summary.py (docs/benchmark.md).
 #
@@ -17,9 +17,7 @@ param(
     # five turns of the ring to Free Race, then rules, course, character and
     # gear. By present 12000 the race is running.
     [string]$Say = 'ok@2200,ok@2600,ok@3000,start@3400,ok@3800,right@4600,right@5000,right@5400,right@5800,right@6200,ok@6600,ok@7400,ok@8200,ok@9000,ok@9800,ok@10600,ok@11400',
-    [int]$PresentLimit = 40000,        # a backstop, should the menu script never finish
-    [int]$AfterSay = 4200,             # presents to run after the last word (the race takes about 130 of them to start)
-    [double]$ReferenceFps = 30,
+    [int]$PresentLimit = 15600,
     [int]$Skip = 600,                 # race frames left out at the start
     [int]$TimeoutMinutes = 25,        # a run that takes longer is stopped
     [int]$ScreenshotEvery = 0,         # a screenshot every N presents in every run (a diagnostic: it slows the run)
@@ -37,14 +35,6 @@ $root = Split-Path -Parent $PSScriptRoot
 if (-not $env:SFR_DXC_LIBRARY -and (Test-Path -LiteralPath (Join-Path $root 'dxc\dxcompiler.dll'))) { $env:SFR_DXC_LIBRARY = Join-Path $root 'dxc' }
 $host_dir = Join-Path $root 'out/build/host'
 $exe = Join-Path $host_dir 'sfr_cpu_diagnostic.exe'
-
-# A program built before SFR_PRESENT_LIMIT_AFTER_SAY would never stop at the end of a run
-if (Test-Path -LiteralPath $exe) {
-    $bytes = [System.IO.File]::ReadAllBytes($exe)
-    if (-not [System.Text.Encoding]::GetEncoding(28591).GetString($bytes).Contains('SFR_PRESENT_LIMIT_AFTER_SAY')) {
-        throw "$exe is older than this script (no SFR_PRESENT_LIMIT_AFTER_SAY): build again, or take the program from a new kit"
-    }
-}
 if (-not (Test-Path -LiteralPath $exe)) { throw "Build first: scripts\build_tools.ps1 -Diagnostic (missing $exe)" }
 # A build that failed leaves the last good executable behind, and a benchmark of
 # it would be taken for one of the sources checked out now.
@@ -125,12 +115,10 @@ $base = [ordered]@{
     # Since v0.4.3 the per-frame NATIVE_PRESENT line is only written when asked for (tracing is off here)
     SFR_FRAME_METRICS = '1'
     SFR_WINDOW_WIDTH = '1280'; SFR_WINDOW_HEIGHT = '720'; SFR_FULLSCREEN = '0'; SFR_VSYNC = '0'
-    SFR_NUI_HAND_CENTRED = '1'; SFR_SAY = $Say; SFR_PRESENT_LIMIT = "$PresentLimit"; SFR_PRESENT_LIMIT_AFTER_SAY = "$AfterSay"
+    SFR_NUI_HAND_CENTRED = '1'; SFR_SAY = $Say; SFR_PRESENT_LIMIT = "$PresentLimit"
     # The menus take time on the wall clock: on a fast PC a script by presents alone speaks too early
     # and a run may never reach the race (8 of 19 on a Ryzen AI MAX+ 395).
     SFR_SAY_MIN_SECONDS = '3'
-    # Each word waits for its present divided by this, so every PC takes the same time over the menus
-    SFR_SAY_REFERENCE_FPS = "$ReferenceFps"
 }
 # Left unset, whatever this console has: the Kinect, the voice, a second
 # player, the per-setting switches and the investigation aids.
@@ -178,7 +166,7 @@ if ($power -eq 'ON BATTERY') { Write-Warning 'On battery: plug in, or the CPU an
 Write-Output "PC: $power, power plan '$plan', $idle% busy before the start"
 @("commit=$commit", "generated=$generated", "model=$model", "cpu=$cpu", "gpu=$gpu", "driver=$driver", "power=$power plan=$plan idle_cpu_percent=$idle",
   "cold_pipelines=$([bool]$ColdPipelines)", "os=$([Environment]::OSVersion.VersionString)",
-  "configs=$($Configs -join ',') repeats=$Repeats after_say=$AfterSay reference_fps=$ReferenceFps capped=$([bool]$Capped)",
+  "configs=$($Configs -join ',') repeats=$Repeats present_limit=$PresentLimit capped=$([bool]$Capped)",
   "say=$Say") | Set-Content -LiteralPath (Join-Path $Out 'info.txt') -Encoding UTF8
 
 if ($generated -and (Test-Path -LiteralPath (Join-Path $generated 'localize_report.json'))) {

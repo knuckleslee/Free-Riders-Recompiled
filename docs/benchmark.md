@@ -34,9 +34,7 @@ cd C:\Users\<你>\Documents\free-riders-recompiled
 | `-Repeats 3` | 每種設定跑幾趟（預設 2） |
 | `-NoWarmup` | 不跑暖機那趟 |
 | `-Capped` | 限制 60 fps，和平常玩一樣；預設不限，才看得出離 60 還有多遠 |
-| `-PresentLimit 40000` | 保險：最多跑到第幾格，選單腳本沒說完時才會用到 |
-| `-AfterSay 4200` | 最後一個選單字說完後再跑幾格（預設 4200；比賽約在 130 格後開始） |
-| `-ReferenceFps 30` | 選單字等 P/30 秒才說，快的 PC 也不會說太早 |
+| `-PresentLimit 18000` | 在第幾格結束（預設 15600，比賽約在 12000 格開始） |
 | `-Skip 600` | 比賽開始後前幾格不算（倒數、第一次用到的著色器） |
 
 也可以直接整理現有的 log：`python scripts\benchmark_summary.py out\bench\<日期時間>`。
@@ -393,15 +391,8 @@ CPU 與 GPU 型號本身仍然說明你用什麼硬體；送出前請自己打�
 `make_benchmark_kit.ps1` 會在結尾列出這個 kit 該有的東西哪些在、哪些缺（`ok`／`MISSING`／`absent`），
 並且不會刪除含有 `out\bench` 結果的資料夾。
 
-## 選單腳本依 FPS 等比例拉長
+## 選單腳本依 FPS 等比例拉長（已撤回）
 
-`SFR_SAY` 的時間是 present 次數，PC 越快，同樣次數的實際秒數越短，選單還沒準備好就被說話，整串錯位，
-一趟就走不進比賽（i7 19 趟只有 7 趟進，i5 全沒進）。現在多了：
-
-- `SFR_SAY_REFERENCE_FPS=n`：寫成 `@P` 的字，要等到開跑後 P/n 秒才說（再加上原本的 present 與間隔條件）。
-  benchmark 用 30，所以 60 fps 的 PC 也要等 380 秒說完最後一個字，跟 30 fps 的 PC 一樣久；比 30 慢的 PC 還是照 present。
-- `SFR_PRESENT_LIMIT_AFTER_SAY=n`：最後一個字說完後再跑 n 個 present 就結束（benchmark 用 4200）。
-  腳本拉長後，進比賽的 present 數隨 PC 速度而變，所以不能再用固定總數。
-- `benchmark.ps1` 的 `-PresentLimit` 改成 `-AfterSay`，另有 `-ReferenceFps`（預設 30）。
-
-單趟會變長：說完字約 6.5 分鐘，加上比賽約 2 分鐘。這是否真的解決走不進比賽，要在 i7 上重跑才知道。
+試過讓選單字依 FPS 等比例拉長（`SFR_SAY_REFERENCE_FPS`、`SFR_PRESENT_LIMIT_AFTER_SAY`），
+benchmark 現在回到原本的做法：字依 present 次數說、至少間隔 3 秒，`-PresentLimit`（預設 15600）結束。
+這兩個環境變數還留在程式裡，需要時可手動設定，benchmark 不再使用。
