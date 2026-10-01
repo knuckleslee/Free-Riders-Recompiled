@@ -108,6 +108,8 @@ $base = [ordered]@{
     SFR_FRAME_LIMIT = $(if ($Capped) { '60' } else { '0' })
     SFR_RENDER_EVERY = '1'; SFR_PARALLEL_WORKER = 'cores'; SFR_VERTEX_CACHE = '1'; SFR_GPU_PIPELINE = '1'
     SFR_AUDIO = '0'; SFR_PROFILE = '1'; SFR_SKIP_MOVIES = '1'
+    # Since v0.4.3 the per-frame NATIVE_PRESENT line is only written when asked for (tracing is off here)
+    SFR_FRAME_METRICS = '1'
     SFR_WINDOW_WIDTH = '1280'; SFR_WINDOW_HEIGHT = '720'; SFR_FULLSCREEN = '0'; SFR_VSYNC = '0'
     SFR_NUI_HAND_CENTRED = '1'; SFR_SAY = $Say; SFR_PRESENT_LIMIT = "$PresentLimit"
 }
