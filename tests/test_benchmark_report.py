@@ -32,6 +32,20 @@ class BenchmarkReportTest(unittest.TestCase):
             self.assertEqual(len((destination / 'runs.csv').read_text(encoding='utf-8').splitlines()), 5)
             self.assertEqual(len((destination / 'frames' / 'baseline-1.csv').read_text(encoding='utf-8').splitlines()), 101)
 
+    def test_the_runs_left_out_can_be_kept_out_of_the_report(self):
+        with tempfile.TemporaryDirectory() as root:
+            folder = Path(root) / 'run'
+            folder.mkdir()
+            for repeat in range(1, 5):
+                write_log(folder, f'baseline-{repeat}.log', 40, race=100)
+            write_log(folder, 'never-1.log', 40, race=0)
+            destination = Path(root) / 'out'
+            report.build(folder, destination, 'Some Laptop', None, skip=0, list_left_out=False)
+            text = (destination / 'report.md').read_text(encoding='utf-8')
+            self.assertNotIn('never-1', text)
+            self.assertNotIn('沒有納入', text)
+            self.assertIn('baseline', text)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -38,7 +38,7 @@ def read_info(folder):
     return info
 
 
-def build(folder, destination, machine, notes, skip):
+def build(folder, destination, machine, notes, skip, list_left_out=True):
     rows = []
     for log in sorted(Path(folder).glob('*.log')):
         config, _, repeat = log.stem.rpartition('-')
@@ -87,9 +87,11 @@ def build(folder, destination, machine, notes, skip):
         lines.append(f"| {config} | {repeat} | {stats['fps']:.1f} | {stats['median_ms']:.1f} | {stats['p95_ms']:.1f} | "
                      f"{stats['p99_ms']:.1f} | {stats['main_held_ms']:.1f} | {stats['draw_ms']:.1f} | {stats['slow50']} | "
                      f"{stats['hitch30']} | {stats['pipelines']} |")
-    if problems:
+    if problems and list_left_out:
         lines += ['', '## 沒有納入的趟', ''] + [f'- {p}' for p in problems]
-    lines += ['', '## 比較', '', bench.compare(summary_rows)]
+    # Without the list, the comparison sees only the runs that count.
+    compared = summary_rows if list_left_out else [row for row in summary_rows if (row[0], row[1]) in kept]
+    lines += ['', '## 比較', '', bench.compare(compared)]
     if notes:
         lines += ['', Path(notes).read_text(encoding='utf-8').rstrip()]
     lines += ['', '## 附檔', '',
@@ -107,12 +109,13 @@ def main(argv):
     parser.add_argument('--machine', default='', help='the computer model, for the title')
     parser.add_argument('--notes', default='', help='a markdown file of conclusions to put at the end')
     parser.add_argument('--skip', type=int, default=600)
+    parser.add_argument('--hide-left-out', action='store_true', help='do not list the runs that were left out')
     args = parser.parse_args(argv[1:])
     source = Path(args.folder)
     destination = source.with_name(source.name + '-report')
     if destination.exists():
         shutil.rmtree(destination)
-    kept, left_out = build(source, destination, args.machine, args.notes or None, args.skip)
+    kept, left_out = build(source, destination, args.machine, args.notes or None, args.skip, not args.hide_left_out)
     archive = shutil.make_archive(str(destination), 'zip', destination)
     print(f'{kept} runs in the report, {left_out} left out')
     print(f'Folder: {destination}')
