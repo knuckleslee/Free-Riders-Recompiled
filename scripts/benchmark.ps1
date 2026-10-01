@@ -23,6 +23,8 @@ param(
     [switch]$NoWarmup,                # the first run fills the shader caches
     [switch]$SkipBuildCheck,          # a copied folder (no git): its files' times say nothing about the build
     [switch]$Capped,                  # 60 fps as when playing, not as fast as it goes
+    [string]$ImageDirectory = '',     # the game folders, when they are not where this checkout keeps them
+    [string]$AssetDirectory = '',
     [string]$Out = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -48,6 +50,8 @@ if (Test-Path -LiteralPath $ini) {
         if ($line -match '^asset_directory=(.+)$') { $assets = $Matches[1] }
     }
 }
+if ($ImageDirectory) { $image = $ImageDirectory }
+if ($AssetDirectory) { $assets = $AssetDirectory }
 # Paths copied from another PC's settings.ini lead nowhere: this folder's own
 # are used then.
 if (-not (Test-Path -LiteralPath $image)) { $image = Join-Path $root 'out/recomp/image-loader' }
@@ -109,7 +113,7 @@ $base = [ordered]@{
 # player, the per-setting switches and the investigation aids.
 $cleared = @('SFR_CAMERA', 'SFR_VOICE', 'SFR_INPUT_SCRIPT', 'SFR_INPUT_SCRIPT_2', 'SFR_GRAPHICS', 'SFR_HOST_PROCESSORS',
              'SFR_SKIP_DRAWS', 'SFR_SCREENSHOT', 'SFR_SCREENSHOT_EVERY', 'SFR_SAMPLE_PROFILE', 'SFR_HOST_PROFILE',
-             'SFR_MAIN_PROFILE', 'SFR_AVATAR_MODEL', 'SFR_TWO_PLAYERS', 'SFR_PLAYER2_INPUT')
+             'SFR_MAIN_PROFILE', 'SFR_AVATAR_MODEL', 'SFR_TWO_PLAYERS', 'SFR_PLAYER2_INPUT', 'SFR_PIPELINE_MANIFEST')
 # Every setting's switch too, so one run's never carries into the next.
 $cleared = @($cleared + @($settings.Values | ForEach-Object { $_.Keys }) | Sort-Object -Unique)
 $touched = @($base.Keys) + $cleared
@@ -149,6 +153,14 @@ function Start-Run([string]$name, [int]$repeat) {
     foreach ($key in $base.Keys) { Set-Item "Env:$key" $base[$key] }
     $changes = if ($name -eq 'warmup') { @{} } else { $settings[$name] }
     foreach ($key in $changes.Keys) { Set-Item "Env:$key" $changes[$key] }
+    # What a player gets: the recorded pipeline list shipped in data\pipeline-manifests,
+    # prepared before the first frame. A checkout does not put it beside the shader
+    # pack the way the packagers do, so it is named here (unless one is already there).
+    $backend = if ($env:SFR_GRAPHICS -eq 'vulkan') { 'vulkan' } else { 'd3d12' }
+    $shipped = Join-Path $root "data/pipeline-manifests/pipelines-$backend.manifest"
+    if ((Test-Path -LiteralPath $shipped) -and -not (Test-Path -LiteralPath (Join-Path $root "out/shaders/pipelines-$backend.manifest"))) {
+        $env:SFR_PIPELINE_MANIFEST = $shipped
+    }
     $label = "$name-$repeat"
     # A fresh copy of the save each run: the same menus every time, and the
     # player's own save is never written.

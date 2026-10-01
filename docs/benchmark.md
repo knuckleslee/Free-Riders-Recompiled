@@ -329,8 +329,22 @@ CPU 與 GPU 型號本身仍然說明你用什麼硬體；送出前請自己打�
 
 ## 在別台機器跑（不用 git、不用編譯）
 
-1. 把編好的整個資料夾複製到另一台（自己處理複製；不要帶 `.git`、舊的 `out\bench` 和那台的
-   `out\build\host\settings.ini`）。資料夾內含你自己的遊戲副本，只放在你自己的機器上。
-2. 在另一台：打開資料夾，雙擊 `run_benchmark.bat`（`run_benchmark.bat 6` 可改成每種設定 6 趟）。
-   需要 Windows 10 22H2 以上；`py`（Python）有的話會自動產生摘要與去識別化版本。
-3. 跑完它會開啟資料夾並選取 `out\bench\<時間>-shareable.zip`，把這個檔案傳回來。
+在編好的那台：
+
+```powershell
+.\scripts\make_benchmark_kit.ps1 -IncludeGame
+```
+
+它會在 repo 旁邊做出 `sfr-benchmark-kit` 資料夾和 `.zip`，只含 benchmark 需要的東西：
+`run_benchmark.bat`、四個腳本、`out\build\host`（執行檔，不含 `settings.ini`、`.pdb` 等）、
+`out\shaders`（著色器包，內容來自你的遊戲，所以不能散發）、`data\pipeline-manifests`，
+加上 `-IncludeGame` 時你自己的遊戲影像與素材（很大）。不加 `-IncludeGame` 的話，另一台要有自己的遊戲
+資料夾，`run_benchmark.bat` 會問它們在哪。
+
+在另一台：解壓縮，雙擊 `run_benchmark.bat`（`run_benchmark.bat 6` 可改成每種設定 6 趟）。
+需要 Windows 10 22H2 以上；`py`（Python）有的話會自動產生摘要與去識別化版本。
+跑完它會開啟資料夾並選取 `out\bench\<時間>-shareable.zip`，把這個檔案傳回來。
+
+`benchmark.ps1` 現在會把 `data\pipeline-manifests` 裡作者附的清單當成「玩家拿到的清單」使用
+（`SFR_PIPELINE_MANIFEST`；如果 `out\shaders` 旁邊已經有同名清單就用那份），所以 `baseline` 與
+`no-prewarm` 的差別是作者的預建有沒有開。
