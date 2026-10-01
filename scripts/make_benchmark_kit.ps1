@@ -45,6 +45,11 @@ foreach ($file in 'benchmark.ps1', 'benchmark_summary.py', 'profile_summary.py',
 Copy-Into 'out/build/host' @('*.pdb', '*.ilk', '*.obj', '*.map', 'settings.ini') | Out-Null
 if (-not (Copy-Into 'out/shaders')) { Write-Warning 'out\shaders (the shader pack) was not found: the game may translate its shaders at the first start, which needs this checkout.' }
 Copy-Into 'data/pipeline-manifests' | Out-Null
+# The renderer links the pixel shaders of the D3D12 backend with this DXC, found
+# relative to the folder the game runs in (NativeRenderer's DxcLinker).
+if (-not (Copy-Into 'tools/XenosRecomp/thirdparty/dxc-bin/bin/x64' @('dxc.exe'))) {
+    Write-Warning 'tools\XenosRecomp\thirdparty\dxc-bin\bin\x64 (dxcompiler.dll) was not found: the game stops at its first draw with dxcompiler.dll is unavailable.'
+}
 
 if ($IncludeGame) {
     $image = Join-Path $root 'out/recomp/image-loader'
