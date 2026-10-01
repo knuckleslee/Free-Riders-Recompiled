@@ -311,3 +311,18 @@ py scripts\localize_registers.py out\recomp\diagnostic out\recomp\diagnostic-loc
 - 比較時看每趟的分布（P95、超過 80 ms 的格數）比只看平均可靠，但同樣要重複。
 - 這份對照是 eGPU（Thunderbolt）＋ i7-6850K，別的機器的雜訊不同。
 - `benchmark.ps1` 現在會在執行檔比原始碼舊時停下來，避免再把舊執行檔當成新的量。
+
+## 把結果給別人（去識別化）
+
+`benchmark.ps1` 跑完會多做一份 `<資料夾>-shareable` 和 `.zip`（`scripts/anonymize_benchmark.py`），
+原資料夾不動。**原資料夾裡的 `info.txt` 和 log 不是去識別化的**：裡面有 Windows 使用者名稱
+（每個路徑 `C:\Users\<名稱>\…`，包含 `info.txt` 的 `generated=`）、語言與國家
+（`NATIVE_USER_LANGUAGE`／`NATIVE_USER_COUNTRY`）、存檔設定檔的識別碼資料夾名稱，
+以及 10 張遊戲畫面截圖。給別人的請用 `-shareable.zip`：路徑中的使用者名稱變成 `USER`，
+`generated=` 移除，語言與國家的值清掉，設定檔識別碼變成 `E000XXXXXXXXXXXX`，電腦名稱與
+使用者名稱（環境變數）變成 `XXXX`，截圖不放進去（`--keep-screenshots` 才保留）。
+
+保留的：commit、CPU 與 GPU 名稱、Windows 版本、所有計時，因為比較機器需要它們。
+CPU 與 GPU 型號本身仍然說明你用什麼硬體；送出前請自己打開 `info.txt` 和一份 log 看過，
+這個工具只拿掉它知道要找的東西，不保證沒有其他能識別你的內容。
+單獨用法：`py scripts\anonymize_benchmark.py out\bench\20260930-151014 --also 電腦名稱`。
