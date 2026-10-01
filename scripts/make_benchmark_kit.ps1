@@ -53,9 +53,14 @@ function Copy-Into([string]$relative, [string[]]$exclude = @()) {
             if ($exclude | Where-Object { $name -like $_ }) { continue }
             if ($file.FullName -match '[\\/]save[\\/]') { continue }
             $target = Join-Path $Destination ($file.FullName.Substring($root.Length).TrimStart('\', '/'))
-            if ((Test-Path -LiteralPath $target) -and (Get-FileHash -LiteralPath $target).Hash -eq (Get-FileHash -LiteralPath $file.FullName).Hash) { continue }
+            # Same size and time: the copy there is this file (a hash would read it all over the network)
+            if (Test-Path -LiteralPath $target) {
+                $there = Get-Item -LiteralPath $target
+                if ($there.Length -eq $file.Length -and [math]::Abs(($there.LastWriteTimeUtc - $file.LastWriteTimeUtc).TotalSeconds) -lt 3) { continue }
+            }
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
             Copy-Item -Force -LiteralPath $file.FullName -Destination $target
+            (Get-Item -LiteralPath $target).LastWriteTimeUtc = $file.LastWriteTimeUtc
             $updated.Add($target.Substring($Destination.Length).TrimStart('\', '/'))
         }
         return $true
@@ -134,11 +139,11 @@ foreach ($need in $needs) {
     $mark = if ($there) { 'ok     ' } elseif ($need[2]) { 'MISSING' } else { 'absent ' }
     Write-Output "  [$mark] $($need[0])"
 }
-$size = [math]::Round((Get-ChildItem -Recurse -File -LiteralPath $Destination | Measure-Object Length -Sum).Sum / 1MB)
+$size = if ($UpdateOnly) { $null } else { [math]::Round((Get-ChildItem -Recurse -File -LiteralPath $Destination | Measure-Object Length -Sum).Sum / 1MB) }
 if ($UpdateOnly) {
     if ($updated.Count) { Write-Output "Updated in ${Destination}:"; $updated | ForEach-Object { Write-Output "  $_" } } else { Write-Output "Already up to date: $Destination" }
 }
-Write-Output "Kit folder: $Destination ($size MB)"
+if ($null -ne $size) { Write-Output "Kit folder: $Destination ($size MB)" }
 if (-not $NoZip -and (Get-Command tar -ErrorAction SilentlyContinue)) {
     $zip = "$Destination.zip"
     if (Test-Path -LiteralPath $zip) { Remove-Item -Force -LiteralPath $zip }
