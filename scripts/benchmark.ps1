@@ -17,7 +17,7 @@ param(
     # one turn of the ring (the ring wraps: Free Race is left of World Grand Prix;
     # if `left` does nothing, five `right` do it), then rules, course, character and
     # gear. By present 12000 the race is running.
-    [string]$Say = 'ok@1750,ok@2100,ok@2450,start@2800,ok@3000,left@3200,ok@3400,ok@3700,ok@4000,ok@4300,left@4600,ok@4900',
+    [string]$Say = 'ok@1750,ok@2100,ok@2450,start@2800,ok@3000,left@3200,ok@3400,ok@3700,ok@4000,ok@4300,right@4600,ok@4900',
     [int]$PresentLimit = 15600,
     [switch]$NoStretch,               # the words by presents alone and the run ends at -PresentLimit (it cannot finish on a PC that presents fast)
     [double]$ReferenceFps = 100,
