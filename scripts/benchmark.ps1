@@ -21,6 +21,7 @@ param(
     [double]$ReferenceFps = 30,
     [int]$Skip = 600,                 # race frames left out at the start
     [int]$TimeoutMinutes = 25,        # a run that takes longer is stopped
+    [int]$ScreenshotEvery = 0,         # a screenshot every N presents in every run (a diagnostic: it slows the run)
     [switch]$NoWarmup,                # the first run fills the shader caches
     [switch]$SkipBuildCheck,          # a copied folder (no git): its files' times say nothing about the build
     [switch]$Capped,                  # 60 fps as when playing, not as fast as it goes
@@ -202,6 +203,10 @@ function Start-Run([string]$name, [int]$repeat) {
     if ($name -eq 'warmup') {
         $env:SFR_SCREENSHOT = Join-Path $Out 'warmup-%d.bmp'
         $env:SFR_SCREENSHOT_EVERY = '1500'
+    }
+    if ($ScreenshotEvery -gt 0 -and $name -ne 'warmup') {
+        $env:SFR_SCREENSHOT = Join-Path $Out "$label-%d.bmp"
+        $env:SFR_SCREENSHOT_EVERY = "$ScreenshotEvery"
     }
     $log = Join-Path $Out "$label.log"
     $arguments = @("`"$image`"", "`"$assets`"", '--game-region=ntsc-us')
