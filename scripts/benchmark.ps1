@@ -21,6 +21,7 @@ param(
     [int]$Skip = 600,                 # race frames left out at the start
     [int]$TimeoutMinutes = 25,        # a run that takes longer is stopped
     [switch]$NoWarmup,                # the first run fills the shader caches
+    [switch]$SkipBuildCheck,          # a copied folder (no git): its files' times say nothing about the build
     [switch]$Capped,                  # 60 fps as when playing, not as fast as it goes
     [string]$Out = ''
 )
@@ -33,7 +34,7 @@ if (-not (Test-Path -LiteralPath $exe)) { throw "Build first: scripts\build_tool
 # it would be taken for one of the sources checked out now.
 $newest = Get-ChildItem -LiteralPath (Join-Path $root 'src') -Include *.cpp, *.h -Recurse |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if ($newest -and $newest.LastWriteTime -gt (Get-Item -LiteralPath $exe).LastWriteTime) {
+if (-not $SkipBuildCheck -and $newest -and $newest.LastWriteTime -gt (Get-Item -LiteralPath $exe).LastWriteTime) {
     throw "$exe is older than src\$($newest.Name): the last build did not finish. Build again: scripts\build_tools.ps1 -Diagnostic"
 }
 
