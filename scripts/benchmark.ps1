@@ -14,9 +14,10 @@ param(
     [string[]]$Configs = @('baseline', 'sequential', 'serial', 'skip-draws'),
     [int]$Repeats = 2,
     # The menu words and the presents they are said at: title, main menu,
-    # five turns of the ring to Free Race, then rules, course, character and
+    # one turn of the ring (the ring wraps: Free Race is left of World Grand Prix;
+    # if `left` does nothing, five `right` do it), then rules, course, character and
     # gear. By present 12000 the race is running.
-    [string]$Say = 'ok@1750,ok@2100,ok@2450,start@2800,ok@3000,right@3200,right@3400,right@3600,right@3800,right@4000,ok@4200,ok@4500,ok@4800,ok@5100,ok@5400,ok@5700,ok@6000,ok@6300',
+    [string]$Say = 'ok@1750,ok@2100,ok@2450,start@2800,ok@3000,left@3200,ok@3400,ok@3700,ok@4000,ok@4300,ok@4600,ok@4900,ok@5200',
     [int]$PresentLimit = 15600,
     [switch]$NoStretch,               # the words by presents alone and the run ends at -PresentLimit (it cannot finish on a PC that presents fast)
     [double]$ReferenceFps = 100,
