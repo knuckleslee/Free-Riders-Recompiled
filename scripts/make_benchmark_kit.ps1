@@ -3,6 +3,10 @@
 #
 #   scripts\make_benchmark_kit.ps1                  # kit without the game
 #   scripts\make_benchmark_kit.ps1 -IncludeGame     # with your copy of the game (large)
+#   scripts\make_benchmark_kit.ps1 -UpdateOnly      # only the program and the scripts: unzip it over a kit
+#                                                   # an earlier run of this made (the shader pack, the DXC and
+#                                                   # the game are already there)
+#   scripts\make_benchmark_kit.ps1 -DxcDirectory D:\dxc   # use this folder's dxcompiler.dll and dxil.dll
 #
 # On the other PC, unzip it and double-click run_benchmark.bat. Without -IncludeGame
 # the other PC needs the game's image and asset folders of its own, and the
@@ -11,6 +15,8 @@
 param(
     [string]$Destination = '',
     [switch]$IncludeGame,
+    [switch]$UpdateOnly,
+    [string]$DxcDirectory = '',
     [switch]$NoZip
 )
 $ErrorActionPreference = 'Stop'
@@ -20,7 +26,13 @@ $host_dir = Join-Path $root 'out/build/host'
 if (-not (Test-Path -LiteralPath (Join-Path $host_dir 'sfr_cpu_diagnostic.exe'))) {
     throw "Build first: scripts\build_tools.ps1 -Diagnostic (missing sfr_cpu_diagnostic.exe)"
 }
-if (Test-Path -LiteralPath $Destination) { Remove-Item -Recurse -Force -LiteralPath $Destination }
+if (Test-Path -LiteralPath $Destination) {
+    # A kit that has been run holds its results: never delete those along with it.
+    if (Test-Path -LiteralPath (Join-Path $Destination 'out/bench')) {
+        throw "$Destination holds benchmark results (out\bench). Move them away, or choose another -Destination."
+    }
+    Remove-Item -Recurse -Force -LiteralPath $Destination
+}
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 
 function Copy-Into([string]$relative, [string[]]$exclude = @()) {
@@ -39,26 +51,28 @@ function Copy-Into([string]$relative, [string[]]$exclude = @()) {
 
 Copy-Into 'run_benchmark.bat' | Out-Null
 try { (& git -C $root rev-parse --short HEAD 2>$null) | Set-Content -LiteralPath (Join-Path $Destination 'commit.txt') -Encoding ASCII } catch { }
-foreach ($file in 'benchmark.ps1', 'benchmark_summary.py', 'profile_summary.py', 'anonymize_benchmark.py') {
+foreach ($file in 'benchmark.ps1', 'benchmark_summary.py', 'profile_summary.py', 'anonymize_benchmark.py', 'benchmark_report.py') {
     Copy-Into "scripts/$file" | Out-Null
 }
 Copy-Into 'out/build/host' @('*.pdb', '*.ilk', '*.obj', '*.map', 'settings.ini') | Out-Null
-if (-not (Copy-Into 'out/shaders')) { Write-Warning 'out\shaders (the shader pack) was not found: the game may translate its shaders at the first start, which needs this checkout.' }
-Copy-Into 'data/pipeline-manifests' | Out-Null
+if ($UpdateOnly) { }
+elseif (-not (Copy-Into 'out/shaders')) { Write-Warning 'out\shaders (the shader pack) was not found: the game may translate its shaders at the first start, which needs this checkout.' }
+if (-not $UpdateOnly) { Copy-Into 'data/pipeline-manifests' | Out-Null }
 # The renderer links the pixel shaders of the D3D12 backend with a DXC (dxcompiler.dll
 # and dxil.dll): the one SFR_DXC_LIBRARY names, else the checkout's dxc-bin, else any
 # dxcompiler.dll under this checkout. The kit's run_benchmark.bat points the game at
 # the dxc folder made here.
 $dxc = $null
-foreach ($candidate in @($env:SFR_DXC_LIBRARY, (Join-Path $root 'tools/XenosRecomp/thirdparty/dxc-bin/bin/x64'))) {
+foreach ($candidate in @($DxcDirectory, $env:SFR_DXC_LIBRARY, (Join-Path $root 'tools/XenosRecomp/thirdparty/dxc-bin/bin/x64'))) {
     if ($candidate -and (Test-Path -LiteralPath (Join-Path $candidate 'dxcompiler.dll'))) { $dxc = $candidate; break }
 }
-if (-not $dxc) {
+if (-not $dxc -and -not $UpdateOnly) {
     $found = Get-ChildItem -LiteralPath $root -Recurse -Filter dxcompiler.dll -ErrorAction SilentlyContinue |
         Where-Object { Test-Path -LiteralPath (Join-Path $_.DirectoryName 'dxil.dll') } | Select-Object -First 1
     if ($found) { $dxc = $found.DirectoryName }
 }
-if ($dxc) {
+if ($UpdateOnly) { }
+elseif ($dxc) {
     $to = Join-Path $Destination 'dxc'
     New-Item -ItemType Directory -Force -Path $to | Out-Null
     foreach ($name in 'dxcompiler.dll', 'dxil.dll') { Copy-Item -Force -LiteralPath (Join-Path $dxc $name) -Destination $to }
@@ -67,7 +81,7 @@ if ($dxc) {
     Write-Warning 'dxcompiler.dll and dxil.dll were not found: the game stops at its first draw with dxcompiler.dll is unavailable.'
 }
 
-if ($IncludeGame) {
+if ($IncludeGame -and -not $UpdateOnly) {
     $image = Join-Path $root 'out/recomp/image-loader'
     $assets = Join-Path $root 'private/assets'
     $ini = Join-Path $host_dir 'settings.ini'
@@ -85,6 +99,21 @@ if ($IncludeGame) {
     }
 }
 
+# What the kit needs to run on another PC, and which of it this one has.
+$needs = @(
+    @('the program', 'out/build/host/sfr_cpu_diagnostic.exe', $true),
+    @('run_benchmark.bat', 'run_benchmark.bat', $true),
+    @('benchmark script', 'scripts/benchmark.ps1', $true),
+    @('DXC (dxcompiler.dll)', 'dxc/dxcompiler.dll', -not $UpdateOnly),
+    @('shader pack', 'out/shaders/shaders.pack', $false),
+    @('game image', 'out/recomp/image-loader', $false),
+    @('game assets', 'private/assets', $false))
+foreach ($need in $needs) {
+    $there = Test-Path -LiteralPath (Join-Path $Destination $need[1])
+    if ($UpdateOnly -and $need[1] -match '^(dxc|out/shaders|out/recomp|private)') { continue }
+    $mark = if ($there) { 'ok     ' } elseif ($need[2]) { 'MISSING' } else { 'absent ' }
+    Write-Output "  [$mark] $($need[0])"
+}
 $size = [math]::Round((Get-ChildItem -Recurse -File -LiteralPath $Destination | Measure-Object Length -Sum).Sum / 1MB)
 Write-Output "Kit folder: $Destination ($size MB)"
 if (-not $NoZip -and (Get-Command tar -ErrorAction SilentlyContinue)) {

@@ -382,3 +382,9 @@ CPU 與 GPU 型號本身仍然說明你用什麼硬體；送出前請自己打�
 每格極快（15600 格在沒走進比賽的 19 秒內就跑完），走進比賽的趟與沒走進的趟，各步驟的實際秒數差約 1～2 秒，
 所以腳本有時早一步。現在多了 `SFR_SAY_MIN_SECONDS`（benchmark 設為 3）：每個字至少距離上一個 3 秒才說。
 在 i7（約每步 13 秒）上不會有任何影響。**這個改動要重新編譯。**
+
+更新已經做好的 kit（只換程式與腳本，不重送遊戲）：在編好的那台執行
+`.\scripts\make_benchmark_kit.ps1 -UpdateOnly -Destination C:\Users\<你>\Documents\sfr-benchmark-update`，
+把產生的 `.zip` 解開、覆蓋到另一台的 kit 資料夾（其中的著色器包、DXC、遊戲與舊結果都不會動）。
+`make_benchmark_kit.ps1` 會在結尾列出這個 kit 該有的東西哪些在、哪些缺（`ok`／`MISSING`／`absent`），
+並且不會刪除含有 `out\bench` 結果的資料夾。
