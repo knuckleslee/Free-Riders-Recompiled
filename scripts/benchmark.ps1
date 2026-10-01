@@ -34,9 +34,11 @@ $exe = Join-Path $host_dir 'sfr_cpu_diagnostic.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw "Build first: scripts\build_tools.ps1 -Diagnostic (missing $exe)" }
 # A build that failed leaves the last good executable behind, and a benchmark of
 # it would be taken for one of the sources checked out now.
-$newest = Get-ChildItem -LiteralPath (Join-Path $root 'src') -Include *.cpp, *.h -Recurse |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $SkipBuildCheck -and $newest -and $newest.LastWriteTime -gt (Get-Item -LiteralPath $exe).LastWriteTime) {
+$src = Join-Path $root 'src'
+$newest = if (-not $SkipBuildCheck -and (Test-Path -LiteralPath $src)) {
+    Get-ChildItem -LiteralPath $src -Include *.cpp, *.h -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+}
+if ($newest -and $newest.LastWriteTime -gt (Get-Item -LiteralPath $exe).LastWriteTime) {
     throw "$exe is older than src\$($newest.Name): the last build did not finish. Build again: scripts\build_tools.ps1 -Diagnostic"
 }
 
