@@ -32,6 +32,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+# A kit keeps its own DXC next to the scripts (run_benchmark.bat sets this too); without it nothing is drawn
+if (-not $env:SFR_DXC_LIBRARY -and (Test-Path -LiteralPath (Join-Path $root 'dxc\dxcompiler.dll'))) { $env:SFR_DXC_LIBRARY = Join-Path $root 'dxc' }
 $host_dir = Join-Path $root 'out/build/host'
 $exe = Join-Path $host_dir 'sfr_cpu_diagnostic.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw "Build first: scripts\build_tools.ps1 -Diagnostic (missing $exe)" }
