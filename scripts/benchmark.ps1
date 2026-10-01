@@ -19,7 +19,7 @@ param(
     [string]$Say = 'ok@2200,ok@2600,ok@3000,start@3400,ok@3800,right@4600,right@5000,right@5400,right@5800,right@6200,ok@6600,ok@7400,ok@8200,ok@9000,ok@9800,ok@10600,ok@11400',
     [int]$PresentLimit = 15600,
     [switch]$NoStretch,               # the words by presents alone and the run ends at -PresentLimit (it cannot finish on a PC that presents fast)
-    [double]$ReferenceFps = 30,
+    [double]$ReferenceFps = 100,
     [int]$AfterSay = 4200,
     [int]$Skip = 600,                 # race frames left out at the start
     [int]$TimeoutMinutes = 25,        # a run that takes longer is stopped
