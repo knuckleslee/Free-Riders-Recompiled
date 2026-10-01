@@ -559,7 +559,14 @@ void guest_checkpoint_permit() {
     // One call in 256 entries and loop labels (it was 32): the permit itself
     // looks at the time only every 64th call, still far inside its 2 ms
     // quantum, and the call was over 1% of a race frame (docs/benchmark.md).
-    guest_thread_state.entry.checkpoint_countdown = 255;
+    // SFR_CHECKPOINT_INTERVAL=N (a measurement, default 256) is the number of
+    // entries and loop labels between two calls.
+    static const uint32_t interval = [] {
+        const char* const text = std::getenv("SFR_CHECKPOINT_INTERVAL");
+        const long value = text ? std::strtol(text, nullptr, 10) : 256;
+        return uint32_t(value > 0 ? value : 256);
+    }();
+    guest_thread_state.entry.checkpoint_countdown = interval - 1;
     if (!execution_permit) throw std::logic_error("guest instruction without execution permit");
     // Validates ownership and cancellation before shared memory access, and
     // hands off only outside a reservation.

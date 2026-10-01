@@ -1,5 +1,6 @@
 #include "vector_memory.h"
 #include "guest_memory.h"
+#include <cstdlib>
 #if defined(__aarch64__)
 #include <arm_neon.h>
 #endif
@@ -11,6 +12,14 @@ namespace sfr {
 // step. Only a slow page checks the range and goes a byte at a time; the
 // title's race used them often enough for that to show in a profile
 // (docs/benchmark.md).
+// SFR_FAST_PARTIAL_STORES=0 (a measurement, docs/performance-midterm-2026-10-01.md):
+// stvlx and stvrx check the range and go a byte at a time as before, on every
+// platform (the loads are the original's fast path and stay).
+static const bool fast_partial_stores = [] {
+    const char* const text = std::getenv("SFR_FAST_PARTIAL_STORES");
+    return !(text && *text == '0');
+}();
+
 VectorBytes load_vector_left(GuestMemory& memory, uint32_t address) {
     const uint32_t count = 16 - (address & 15);
 #if defined(__aarch64__)
@@ -35,11 +44,6 @@ VectorBytes load_vector_left(GuestMemory& memory, uint32_t address) {
     }
     memory.check(address, count);
     VectorBytes result{};
-    if (const uint8_t* bytes = memory.fast_read(address, count)) {
-        for (uint32_t i = 0; i < count; ++i) result[15 - i] = bytes[i];
-        return result;
-    }
-    memory.check(address, count);
     for (uint32_t i = 0; i < count; ++i)
         result[15 - i] = memory.load<uint8_t>(uint64_t(address) + i);
     return result;
@@ -71,7 +75,7 @@ VectorBytes load_vector_right(GuestMemory& memory, uint32_t address) {
 
 void store_vector_left(GuestMemory& memory, uint32_t address, const VectorBytes& value) {
     const uint32_t count = 16 - (address & 15);
-    if (volatile uint8_t* bytes = memory.fast_write(address, count)) {
+    if (volatile uint8_t* bytes = fast_partial_stores ? memory.fast_write(address, count) : nullptr) {
         for (uint32_t i = 0; i < count; ++i) bytes[i] = value[15 - i];
         return;
     }
@@ -84,7 +88,7 @@ void store_vector_right(GuestMemory& memory, uint32_t address, const VectorBytes
     const uint32_t count = address & 15;
     if (!count) return;
     const uint32_t first = address - count;
-    if (volatile uint8_t* bytes = memory.fast_write(first, count)) {
+    if (volatile uint8_t* bytes = fast_partial_stores ? memory.fast_write(first, count) : nullptr) {
         for (uint32_t i = 0; i < count; ++i) bytes[count - 1 - i] = value[i];
         return;
     }

@@ -44,64 +44,66 @@
    XenonRecomp 的 `*_as_local` 選項，再把我們的安全規則（輸入、hook 前存回、`HOST_INPUTS`、`KEPT_HELPERS`）
    移進去。這要等 A/B 確認值得之後才做。
 
-## 四、i5 測試計畫
+## 四、i5 測試計畫（已備好，待在 i5 執行）
 
-i5 的 kit 在 `X:\sfr-benchmark-kit`，一律用 `scripts\make_benchmark_kit.ps1 -UpdateOnly` 在原地更新。
-每一階段都要確認 log 裡 `start` 之後出現兩行 `NUI_MESSAGE_BOX`，且有 `racing=1` 的格；沒進比賽的趟不計。
+基底已確認：作者的 `upstream/main` 是 v0.4.5（`2ecaa7f`），完整包含在本分支裡（領先 68、落後 0）。
 
-### 階段 0：i7 準備（先做，不在 i5）
+一份 kit 就能跑完所有階段。`benchmark.ps1` 新增 `plain`、`local` 兩個設定（各指定同資料夾裡的另一個執行檔），
+所以區域變數的 A/B 也由同一次呼叫交錯完成，結果在同一個資料夾，彙總的成對比值直接可用，不必再做兩個 kit。
 
-```powershell
-.\scripts\build_tools.ps1 -Diagnostic -DiagnosticDirectory out/recomp/diagnostic        # 原始生成碼
-copy out\build\host\sfr_cpu_diagnostic.exe ..\sfr_plain.exe
-.\scripts\build_tools.ps1 -Diagnostic -DiagnosticDirectory out/recomp/diagnostic-local  # 區域變數
-copy out\build\host\sfr_cpu_diagnostic.exe ..\sfr_local.exe
-```
-
-兩個執行檔必須來自同一份 commit。做兩個 kit：把 `sfr_plain.exe` 與 `sfr_local.exe` 各放進一個
-`make_benchmark_kit.ps1` 的輸出，分別命名 `sfr-benchmark-kit-plain` 和 `sfr-benchmark-kit-local`。
-兩個 kit 除了 `out\build\host\sfr_cpu_diagnostic.exe` 之外必須逐檔相同。
-
-### 階段 1：i5 上測區域變數（#7）
-
-這是最需要的一項，且不必加任何開關。
-
-1. 兩個 kit 放在 i5 的同一個磁碟上，遊戲資料夾共用（`-ImageDirectory`、`-AssetDirectory` 指到同一處）。
-2. 交錯跑：plain、local、plain、local……各 6 趟，兩個 kit 輪流，不要先跑完一個再跑另一個。
-   因為每個 kit 的 `run_benchmark.bat` 是自己迴圈，交錯要用手動：每輪各跑一次 `-Repeats 1`，共 6 輪。
-   ```powershell
-   foreach ($i in 1..6) {
-       & X:\sfr-benchmark-kit-plain\scripts\benchmark.ps1 -SkipBuildCheck -Configs baseline -Repeats 1 -NoWarmup:($i -gt 1)
-       & X:\sfr-benchmark-kit-local\scripts\benchmark.ps1 -SkipBuildCheck -Configs baseline -Repeats 1 -NoWarmup
-   }
-   ```
-   （第一輪的 plain 留著 warmup，不計；每次呼叫各寫一個 `out\bench\<時間>` 資料夾，12 個資料夾要用各自的
-   `summary.md` 對照，`benchmark_summary.py` 一次只彙總一個資料夾，成對比值要手動算或補一個彙總腳本。）
-3. 判讀：比較「同一輪」的兩個 fps 比值；6 對中至少 5 對同方向，且中位數差大於 baseline 的 4% 雜訊，才算有效。
-4. 同樣的步驟在 i7 再做一次。兩台都有效才進入送件準備。
-
-### 階段 2：i5 上測已有開關的項目（#1、#2、#8）
-
-不需要新程式，用合併後的同一個執行檔（`local` 或 `plain` 擇一，兩階段用同一個）：
+### 階段 0：i7 準備（不在 i5）
 
 ```powershell
-.\scripts\benchmark.ps1 -SkipBuildCheck -Configs baseline,no-suspend-notify,no-render-thread,strict-memory -Repeats 6
+git pull
+.\scripts\build_ab.ps1
+.\scripts\make_benchmark_kit.ps1 -UpdateOnly -Destination X:\sfr-benchmark-kit   # i5 的 kit
 ```
 
-`strict-memory` 是 `benchmark.ps1` 已有的設定（`SFR_STRICT_MEMORY=1`）。
-約 19–25 趟，i5 每趟約 9 分鐘，約 3–4 小時。
+`build_ab.ps1` 從同一個 commit 依序建原始生成碼與區域變數兩個版本，存成 `sfr_cpu_diagnostic_plain.exe`
+與 `sfr_cpu_diagnostic_local.exe`，並寫 `ab.txt`（commit、樹是否乾淨、各版本的生成碼目錄）。
+kit 會整個複製 `out\build\host`，所以兩個執行檔與 `ab.txt` 自動跟著去，結果資料夾也會附 `ab.txt`。
+完成後先在 i7 用 `run_benchmark.bat ab 1` 確認兩個版本都能進比賽（`racing=1`），再把 kit 更新到 i5。
+合併後的 `diagnostic_main.cpp` 就是在這一步第一次於 Windows 編譯。
 
-### 階段 3：i5 上測 #3–#6（需先加開關）
+### 階段 1：區域變數（#7）
 
-這四項現在沒有開關，不能在同一個 kit 比較。做法是各加一個啟動時讀一次的環境變數
-（`SFR_FAST_PARTIAL_VECTOR=0`、`SFR_FAST_RESERVED=0`、`SFR_PIPELINE_REUSE=0`、`SFR_CHECKPOINT_INTERVAL=32`），
-再各加一個 `benchmark.ps1` config，一份 kit 跑 5 個設定。開關只用於量測，送作者前移除或保留由作者決定。
-效果小於 i5 雜訊（約 4%）的項目不單獨送。
+```
+run_benchmark.bat ab        :: plain 與 local 各 6 趟，輪流跑，另有一趟 warmup
+```
+
+判讀：同一輪兩個 fps 的比值；6 對中至少 5 對同向、且中位數差大於該機器的 baseline 雜訊（i5 約 4%）才算有效。
+i7 也跑一次，兩台都有效才進入送件準備。約 2 小時。
+
+### 階段 2：已有開關的項目（#1、#2＋#4、#8）
+
+```
+run_benchmark.bat fast      :: baseline、no-suspend-notify、no-render-thread、strict-memory 各 6 趟
+```
+
+`strict-memory`（`SFR_STRICT_MEMORY=1`）同時把 #2 與 #4 還原，因為原子操作的版面搜尋略過也由 `strict_stores` 控制，
+所以這兩項用同一個開關，量到的是兩者合計。約 3.5 小時。
+
+### 階段 3：另外三項（#3、#5、#6）
+
+三個量測開關已加進程式（啟動時讀一次）：
+
+| 設定 | 環境變數 | 還原成 |
+| --- | --- | --- |
+| `no-partial-stores` | `SFR_FAST_PARTIAL_STORES=0` | `stvlx`／`stvrx` 先檢查再逐位元組寫（作者原版在 x86 上的樣子） |
+| `no-pipeline-reuse` | `SFR_PIPELINE_REUSE=0` | 每次繪製都雜湊 pipeline 鍵並查表 |
+| `checkpoint-32` | `SFR_CHECKPOINT_INTERVAL=32` | 檢查點每 32 次（而不是 256 次）呼叫許可 |
+
+```
+run_benchmark.bat paths     :: baseline 與這三個設定各 6 趟
+```
+
+#3 縮小了：作者的 `load_vector_left`／`load_vector_right` 本來就在所有平台走快速頁面，
+我們獨有的只剩 x86 上的 `stvlx`／`stvrx` 快速寫入。效果小於 i5 雜訊（約 4%）的項目不單獨送。約 3.5 小時。
 
 ### 階段 4：回報
 
-每一階段把 `out\bench\<時間>-shareable.zip` 傳回，結果追加到 `docs/benchmark.md`，
-並更新本檔第二節的「已有證據」欄。
+每階段把 `out\bench\<時間>-shareable.zip` 傳回，結果追加到 `docs/benchmark.md`，並更新第二節的「已有證據」欄。
+開關只用於量測；送作者前移除，或由作者決定是否保留。
 
 ## 五、下一個值得做的改進（推估，尚未量測）
 

@@ -102,6 +102,17 @@ $settings = @{
     # ordinary stores check the title's reservation and pending reads again,
     # as before (baseline skips them: GuestMemory::strict_stores)
     'strict-memory' = @{ SFR_STRICT_MEMORY = '1' }
+    # the three measurement switches of docs/performance-midterm-2026-10-01.md:
+    # each puts one change back to what the original did
+    'no-partial-stores' = @{ SFR_FAST_PARTIAL_STORES = '0' }
+    'no-pipeline-reuse' = @{ SFR_PIPELINE_REUSE = '0' }
+    'checkpoint-32'     = @{ SFR_CHECKPOINT_INTERVAL = '32' }
+    # another executable of the same sources and commit, in the same folder
+    # (scriptsuild_ab.ps1): the generated code as the game was recompiled
+    # (plain) or with its registers kept in locals (local). SFR_EXE is not
+    # passed on to the game.
+    'plain'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_plain.exe' }
+    'local'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_local.exe' }
     # samples the main thread every millisecond during the race (from present
     # 12200); profile.md names the functions (scripts/profile_summary.py)
     'profile'      = @{ SFR_MAIN_PROFILE = '1'; SFR_PROFILE_AFTER = '12200' }
@@ -110,6 +121,13 @@ $settings = @{
 $Configs = @($Configs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 foreach ($name in $Configs) {
     if (-not $settings.ContainsKey($name)) { throw "Unknown setting '$name'; known: $($settings.Keys -join ', ')" }
+}
+
+# A setting that names another executable must find it before anything runs.
+foreach ($name in $Configs) {
+    if ($settings[$name].ContainsKey('SFR_EXE') -and -not (Test-Path -LiteralPath (Join-Path $host_dir $settings[$name]['SFR_EXE']))) {
+        throw "Setting '$name' needs $($settings[$name]['SFR_EXE']) in $host_dir (scripts\build_ab.ps1 makes it)"
+    }
 }
 
 # The launcher's defaults (launcher_settings.cpp game_environment), then what
@@ -186,6 +204,8 @@ Write-Output "PC: $power, power plan '$plan', $idle% busy before the start"
   "configs=$($Configs -join ',') repeats=$Repeats present_limit=$PresentLimit stretch=$([bool]$Stretch) capped=$([bool]$Capped)",
   "say=$Say") | Set-Content -LiteralPath (Join-Path $Out 'info.txt') -Encoding UTF8
 
+$ab = Join-Path $host_dir 'ab.txt'
+if (Test-Path -LiteralPath $ab) { Copy-Item -LiteralPath $ab -Destination $Out }
 if ($generated -and (Test-Path -LiteralPath (Join-Path $generated 'localize_report.json'))) {
     Copy-Item -LiteralPath (Join-Path $generated 'localize_report.json') -Destination $Out
 }
@@ -198,7 +218,13 @@ function Start-Run([string]$name, [int]$repeat) {
     foreach ($key in $cleared) { Remove-Item "Env:$key" -ErrorAction SilentlyContinue }
     foreach ($key in $base.Keys) { Set-Item "Env:$key" $base[$key] }
     $changes = if ($name -eq 'warmup') { @{} } else { $settings[$name] }
-    foreach ($key in $changes.Keys) { Set-Item "Env:$key" $changes[$key] }
+    $program = $exe
+    foreach ($key in $changes.Keys) {
+        if ($key -eq 'SFR_EXE') {
+            $program = Join-Path $host_dir $changes[$key]
+            if (-not (Test-Path -LiteralPath $program)) { throw "Missing $program (scripts\build_ab.ps1 makes it)" }
+        } else { Set-Item "Env:$key" $changes[$key] }
+    }
     # What a player gets: the recorded pipeline list shipped in data\pipeline-manifests,
     # prepared before the first frame. A checkout does not put it beside the shader
     # pack the way the packagers do, so it is named here (unless one is already there).
@@ -226,7 +252,7 @@ function Start-Run([string]$name, [int]$repeat) {
     }
     $log = Join-Path $Out "$label.log"
     $arguments = @("`"$image`"", "`"$assets`"", '--game-region=ntsc-us')
-    return Start-Process -FilePath $exe -ArgumentList $arguments -WorkingDirectory $root -NoNewWindow -PassThru `
+    return Start-Process -FilePath $program -ArgumentList $arguments -WorkingDirectory $root -NoNewWindow -PassThru `
         -RedirectStandardError $log -RedirectStandardOutput (Join-Path $Out "$label.out")
 }
 

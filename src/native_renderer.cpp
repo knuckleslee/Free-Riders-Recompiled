@@ -1102,7 +1102,9 @@ void NativeRenderer::draw(const NativeDraw& draw) {
     static thread_local std::vector<uint8_t> last_key;
     static thread_local std::shared_ptr<plume::RenderPipeline>* last_pipeline = nullptr;
     static thread_local uint64_t last_owner = 0;
-    if (!last_pipeline || last_owner != impl_->identity || key != last_key) {
+    // SFR_PIPELINE_REUSE=0 (a measurement): every draw hashes and probes the map.
+    static const bool reuse = [] { const char* const t = std::getenv("SFR_PIPELINE_REUSE"); return !(t && *t == '0'); }();
+    if (!reuse || !last_pipeline || last_owner != impl_->identity || key != last_key) {
         last_pipeline = &impl_->pipelines[key];  // copies the key only when inserting
         last_owner = impl_->identity;
         last_key = key;

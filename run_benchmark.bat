@@ -3,6 +3,9 @@ rem Runs the benchmark on this PC and leaves a copy that is safe to send to othe
 rem   run_benchmark.bat speed        render thread and suspend notification, 6 rounds (about 3 hours)
 rem   run_benchmark.bat pipelines    a new player first race, with and without the prepared pipelines
 rem   run_benchmark.bat speed 8      the same with 8 rounds
+rem   run_benchmark.bat ab           the generated code as recompiled against its registers in locals (needs scripts\build_ab.ps1's two programs)
+rem   run_benchmark.bat fast         suspend notification, render thread and the stores' checks, 6 rounds
+rem   run_benchmark.bat paths        partial vector stores, pipeline reuse and the checkpoint interval, 6 rounds
 rem   run_benchmark.bat speed 2 nostretch   the menu words by presents alone (cannot finish on a fast PC)
 setlocal
 cd /d "%~dp0"
@@ -14,6 +17,9 @@ set REPEATS=%2
 set CONFIGS=baseline,no-render-thread,no-suspend-notify
 set EXTRA=
 if "%REPEATS%"=="" set REPEATS=6
+if /i "%MODE%"=="ab" set CONFIGS=plain,local
+if /i "%MODE%"=="fast" set CONFIGS=baseline,no-suspend-notify,no-render-thread,strict-memory
+if /i "%MODE%"=="paths" set CONFIGS=baseline,no-partial-stores,no-pipeline-reuse,checkpoint-32
 if /i "%MODE%"=="pipelines" (
     set CONFIGS=baseline,no-prewarm
     set EXTRA=-ColdPipelines
