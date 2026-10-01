@@ -38,6 +38,7 @@ function Copy-Into([string]$relative, [string[]]$exclude = @()) {
 }
 
 Copy-Into 'run_benchmark.bat' | Out-Null
+try { (& git -C $root rev-parse --short HEAD 2>$null) | Set-Content -LiteralPath (Join-Path $Destination 'commit.txt') -Encoding ASCII } catch { }
 foreach ($file in 'benchmark.ps1', 'benchmark_summary.py', 'profile_summary.py', 'anonymize_benchmark.py') {
     Copy-Into "scripts/$file" | Out-Null
 }

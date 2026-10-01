@@ -129,7 +129,12 @@ $save_source = Join-Path $host_dir 'save'
 # What the numbers belong to.
 $cpu = try { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name } catch { 'unknown' }
 $gpu = try { (Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join '; ' } catch { 'unknown' }
-$commit = (& git -C $root rev-parse --short HEAD 2>$null)
+# A kit has no git: make_benchmark_kit.ps1 leaves the commit it was made at in commit.txt.
+$commit = try { (& git -C $root rev-parse --short HEAD 2>$null) } catch { $null }
+if (-not $commit) {
+    $recorded = Join-Path $root 'commit.txt'
+    $commit = if (Test-Path -LiteralPath $recorded) { (Get-Content -LiteralPath $recorded -TotalCount 1) } else { 'unknown' }
+}
 # Which generated code the build compiled (scripts/localize_registers.py
 # writes a localized copy beside the original).
 $generated = ''
