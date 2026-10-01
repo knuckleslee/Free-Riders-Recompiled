@@ -45,10 +45,26 @@ foreach ($file in 'benchmark.ps1', 'benchmark_summary.py', 'profile_summary.py',
 Copy-Into 'out/build/host' @('*.pdb', '*.ilk', '*.obj', '*.map', 'settings.ini') | Out-Null
 if (-not (Copy-Into 'out/shaders')) { Write-Warning 'out\shaders (the shader pack) was not found: the game may translate its shaders at the first start, which needs this checkout.' }
 Copy-Into 'data/pipeline-manifests' | Out-Null
-# The renderer links the pixel shaders of the D3D12 backend with this DXC, found
-# relative to the folder the game runs in (NativeRenderer's DxcLinker).
-if (-not (Copy-Into 'tools/XenosRecomp/thirdparty/dxc-bin/bin/x64' @('dxc.exe'))) {
-    Write-Warning 'tools\XenosRecomp\thirdparty\dxc-bin\bin\x64 (dxcompiler.dll) was not found: the game stops at its first draw with dxcompiler.dll is unavailable.'
+# The renderer links the pixel shaders of the D3D12 backend with a DXC (dxcompiler.dll
+# and dxil.dll): the one SFR_DXC_LIBRARY names, else the checkout's dxc-bin, else any
+# dxcompiler.dll under this checkout. The kit's run_benchmark.bat points the game at
+# the dxc folder made here.
+$dxc = $null
+foreach ($candidate in @($env:SFR_DXC_LIBRARY, (Join-Path $root 'tools/XenosRecomp/thirdparty/dxc-bin/bin/x64'))) {
+    if ($candidate -and (Test-Path -LiteralPath (Join-Path $candidate 'dxcompiler.dll'))) { $dxc = $candidate; break }
+}
+if (-not $dxc) {
+    $found = Get-ChildItem -LiteralPath $root -Recurse -Filter dxcompiler.dll -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.DirectoryName 'dxil.dll') } | Select-Object -First 1
+    if ($found) { $dxc = $found.DirectoryName }
+}
+if ($dxc) {
+    $to = Join-Path $Destination 'dxc'
+    New-Item -ItemType Directory -Force -Path $to | Out-Null
+    foreach ($name in 'dxcompiler.dll', 'dxil.dll') { Copy-Item -Force -LiteralPath (Join-Path $dxc $name) -Destination $to }
+    Write-Output "DXC from $dxc"
+} else {
+    Write-Warning 'dxcompiler.dll and dxil.dll were not found: the game stops at its first draw with dxcompiler.dll is unavailable.'
 }
 
 if ($IncludeGame) {

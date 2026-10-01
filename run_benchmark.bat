@@ -10,6 +10,8 @@ set REPEATS=%1
 if "%REPEATS%"=="" set REPEATS=3
 if not exist "out\build\host\sfr_cpu_diagnostic.exe" goto noexe
 set GAMEARGS=
+rem The DXC the renderer links pixel shaders with, when the kit carries one
+if exist "%~dp0dxc\dxcompiler.dll" set SFR_DXC_LIBRARY=%~dp0dxc
 if exist "out\recomp\image-loader" if exist "private\assets" goto run
 if exist "out\build\host\settings.ini" goto run
 echo The game folders are not inside this folder.
