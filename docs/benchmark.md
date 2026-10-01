@@ -34,6 +34,7 @@ cd C:\Users\<你>\Documents\free-riders-recompiled
 | `-Repeats 3` | 每種設定跑幾趟（預設 2） |
 | `-NoWarmup` | 不跑暖機那趟 |
 | `-Capped` | 限制 60 fps，和平常玩一樣；預設不限，才看得出離 60 還有多遠 |
+| `-PresentLimit 40000` | 保險：最多跑到第幾格，選單腳本沒說完時才會用到 |
 | `-AfterSay 4200` | 最後一個選單字說完後再跑幾格（預設 4200；比賽約在 130 格後開始） |
 | `-ReferenceFps 30` | 選單字等 P/30 秒才說，快的 PC 也不會說太早 |
 | `-Skip 600` | 比賽開始後前幾格不算（倒數、第一次用到的著色器） |
