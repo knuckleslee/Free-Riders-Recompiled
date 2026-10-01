@@ -373,7 +373,7 @@ static double limit_frame_rate() {
 // The original saves viewport/scissor, binds the back buffer as RT0, resolves
 // it into the front buffer, restores the saved state and swaps the front buffer
 // (VdSwap/VdPersistDisplay). Viewport, scissor and RT0 end unchanged.
-namespace sfr { std::atomic<uint32_t> present_count{0}; }
+namespace sfr { std::atomic<uint32_t> present_count{0}; std::atomic<uint32_t> say_done_present{0}; }
 // Time base for the present log (seconds since the runtime started).
 static const auto process_start=std::chrono::steady_clock::now();
 // GPU completion callbacks (InsertCallback) waiting for the frame's end.
@@ -546,6 +546,13 @@ SFR_HOOK(sub_824E65A0) {
     static const uint32_t limit=[]{ const char* t=std::getenv("SFR_PRESENT_LIMIT"); return t?uint32_t(std::strtoul(t,nullptr,10)):0u; }();
     if(limit && sfr::present_count>=limit)
         throw sfr::RuntimeStop("present-limit",limit,"SFR_PRESENT_LIMIT reached");
+    // SFR_PRESENT_LIMIT_AFTER_SAY=N ends the run N presents after the last
+    // SFR_SAY word: with the script stretched to the wall clock the race starts
+    // at a present that depends on the PC's speed, so a fixed limit can't be set.
+    static const uint32_t after_say=[]{ const char* t=std::getenv("SFR_PRESENT_LIMIT_AFTER_SAY"); return t?uint32_t(std::strtoul(t,nullptr,10)):0u; }();
+    const uint32_t said_at=sfr::say_done_present.load();
+    if(after_say && said_at && sfr::present_count>=said_at+after_say)
+        throw sfr::RuntimeStop("present-limit",after_say,"SFR_PRESENT_LIMIT_AFTER_SAY reached");
 }
 
 // DrawVerticesUP(device, primitive, vertex count, data, stride). The original

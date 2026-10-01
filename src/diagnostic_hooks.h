@@ -116,6 +116,8 @@ void zero_cache_line(uint32_t);
 void synchronize_resource_memory(PPCContext&);
 // Frames presented so far (guest_graphics_hooks.cpp).
 extern std::atomic<uint32_t> present_count;
+// The present at which the last SFR_SAY word was said (0 until then).
+extern std::atomic<uint32_t> say_done_present;
 // SFR_WATCH_WORD=<hex address>: while this holds an address, every guest
 // function entry reports a change of that word together with the function
 // entered, which names the code that wrote it. A hook may set it for an

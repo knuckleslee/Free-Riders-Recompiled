@@ -75,7 +75,7 @@ def build(folder, destination, machine, notes, skip, list_left_out=True):
     if machine:
         lines.insert(lines.index('| --- | --- |') + 1, f'| 機型 | {machine} |')
     lines += ['', '## 方法', '',
-              '- 遊戲自己從開機走到 Free Race，沒人操作，比賽中由 AI 對手陪跑，跑到第 15600 次 present 自動停止；'
+              '- 遊戲自己從開機走到 Free Race，沒人操作，比賽中由 AI 對手陪跑，說完最後一個選單字後再跑 4200 次 present 自動停止；'
               '不封頂（量的是每格成本，不是封頂 60 fps 下的體驗）。',
               '- 同一個執行檔、同一份存檔，設定之間只差一個環境變數；各設定輪流跑，所以同一輪的幾趟處於相近的機器狀態。',
               f'- 只算比賽中的格，並去掉開頭的 {skip} 格（倒數與第一次使用的著色器）。一格的時間是它與前一次 present 的間隔。',
