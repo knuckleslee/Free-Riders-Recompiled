@@ -80,9 +80,13 @@ foreach ($file in 'benchmark.ps1', 'benchmark_summary.py', 'profile_summary.py',
     Copy-Into "scripts/$file" | Out-Null
 }
 Copy-Into 'out/build/host' @('*.pdb', '*.ilk', '*.obj', '*.map', 'settings.ini') | Out-Null
-if ($UpdateOnly) { }
+# The shader pack and the recorded pipeline lists carry the shader ABI: a kit that keeps
+# an older one translates every shader at the start (and needs the checkout's shader
+# header, which a kit has not) or ignores the lists. So -UpdateOnly brings them along too,
+# but not the runtime cache a checkout made beside them.
+if ($UpdateOnly) { Copy-Into 'out/shaders' @('runtime') | Out-Null }
 elseif (-not (Copy-Into 'out/shaders')) { Write-Warning 'out\shaders (the shader pack) was not found: the game may translate its shaders at the first start, which needs this checkout.' }
-if (-not $UpdateOnly) { Copy-Into 'data/pipeline-manifests' | Out-Null }
+Copy-Into 'data/pipeline-manifests' | Out-Null
 # The renderer links the pixel shaders of the D3D12 backend with a DXC (dxcompiler.dll
 # and dxil.dll): the one SFR_DXC_LIBRARY names, else the checkout's dxc-bin, else any
 # dxcompiler.dll under this checkout. The kit's run_benchmark.bat points the game at
