@@ -48,6 +48,10 @@ if (Test-Path -LiteralPath $ini) {
         if ($line -match '^asset_directory=(.+)$') { $assets = $Matches[1] }
     }
 }
+# Paths copied from another PC's settings.ini lead nowhere: this folder's own
+# are used then.
+if (-not (Test-Path -LiteralPath $image)) { $image = Join-Path $root 'out/recomp/image-loader' }
+if (-not (Test-Path -LiteralPath $assets)) { $assets = Join-Path $root 'private/assets' }
 foreach ($path in $image, $assets) {
     if (-not (Test-Path -LiteralPath $path)) { throw "Missing $path (install the game with the launcher first)" }
 }
