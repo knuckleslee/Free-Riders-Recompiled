@@ -1,7 +1,3 @@
-Title: Paired A/B performance data on v0.4.5: checkpoint interval, render thread, suspend notification (i5-3470, i7-6850K, Ryzen AI MAX+ 395)
-
----
-
 Hi, I have been measuring where a Free Race frame goes on three Windows PCs and put together paired A/B data. It may be useful alongside your handheld work, where your notes say several comparisons were not strict A/B or were inside the noise (for example the suspend notification and host timing).
 
 This issue is data only: no logs, no game files, no shader pack, nothing derived from the game. Every number is a per-run mean over the same scripted race, six interleaved rounds per setting, compared round by round against the same round's baseline.
@@ -44,21 +40,6 @@ the one built last. The only unlocalized runs are the `plain` rows of the first
 table. Absolute frame rates are therefore about 4% above what an unlocalized
 build gives, and the switch effects are measured against that baseline.
 
-## Method
-
-- One unattended Free Race from the menus to the finish, driven by `SFR_SAY`, nobody at the controls, save copied per run. The first 600 race frames are dropped; **3468 race frames** are measured per run.
-- Settings alternate within each round (`baseline`, then each variant) for 6 rounds, after one warm-up run that is not counted. The comparison used is the per-round ratio (variant fps over the same round's baseline fps), because machine state drifts between rounds.
-- A result is called real only if the ratio points the same way in (nearly) all rounds and its size is clearly above the baseline's own spread (max-min over the median of the six baseline runs: i5 4-5%, i7 4%, Z13 8%).
-- The scripts that do this (`scripts/benchmark.ps1`, `scripts/benchmark_summary.py`, the anonymized report tool) are in the fork and can be offered as a separate contribution.
-
-## Machines
-
-| | CPU | GPU / driver | OS |
-| --- | --- | --- | --- |
-| i5 | Core i5-3470 | Radeon RX 480, 31.0.21912.14 | Windows 10 19045 |
-| i7 | Core i7-6850K | GeForce RTX 3080 Ti in an external (eGPU) enclosure, 32.0.15.8157 | Windows 10 19045 |
-| Z13 | Ryzen AI MAX+ 395 (16 cores) | Radeon 8060S integrated, 32.0.31032.1003 | Windows 11 26200, on mains, Turbo power plan, 25% background CPU before the run |
-
 ## Results
 
 Ratio = variant fps / baseline fps of the same round. "Faster rounds" = rounds where the variant beat baseline. Frame rates are means over the 3468 frames.
@@ -96,57 +77,4 @@ every other run), which lifts all three ratios of that round. Without that round
 - **No effect (do not pursue on these PCs):** x86 partial vector stores, pipeline reuse. The `stvlx` row reads as slightly faster with the fast path *off*, which is inside the noise.
 - **Register-localized generated code:** about 4% on i5 (5 of 6 rounds). Smaller than expected once v0.4.5's `__savegprlr`/`__restgprlr` hooks exist. Not measured on i7 or Z13.
 
-## Per-run frame rates (mean fps of each run, in run order)
-
-| Run set | Setting | fps |
-| --- | --- | --- |
-| i5 fast | baseline | 30.5 27.9 30.7 30.8 30.6 30.7 |
-| i5 fast | render thread off | 28.1 28.2 27.2 27.0 27.5 27.0 |
-| i5 fast | suspend notification off | 29.2 30.4 29.9 30.9 28.8 28.8 |
-| i5 fast | strict stores | 29.6 30.2 29.7 29.9 30.0 29.9 |
-| i5 paths | baseline | 30.2 29.9 30.5 31.0 30.2 29.7 |
-| i5 paths | stvlx/stvrx fast path off | 30.8 30.3 31.3 30.7 31.5 30.2 |
-| i5 paths | pipeline reuse off | 30.5 30.0 30.2 30.2 30.1 30.4 |
-| i5 paths | checkpoint interval 32 | 29.5 29.7 28.2 28.7 28.5 28.0 |
-| i5 ab | unlocalized | 28.6 29.7 28.9 29.6 28.4 30.2 |
-| i5 ab | localized | 30.7 30.2 30.4 30.7 30.4 29.8 |
-| i7 | baseline | 38.0 36.8 37.6 37.2 38.3 37.4 |
-| i7 | checkpoint interval 32 | 34.5 36.5 34.9 35.0 34.9 36.4 |
-| Z13 | baseline | 101.2 101.3 108.1 104.5 109.2 107.9 |
-| Z13 | render thread off | 102.1 102.4 109.2 101.9 108.5 107.2 |
-| Z13 | suspend notification off | 91.2 95.8 98.6 95.9 95.8 93.7 |
-| Z13 | checkpoint interval 32 | 94.4 96.7 98.9 100.0 96.7 99.5 |
-
-## Limits to keep in mind
-
-- One scenario (a Free Race, one course and character, scripted menus) on three x86 PCs with D3D12. Nothing here speaks for Android, AArch64, Vulkan or the handhelds this project targets.
-- The run is uncapped. On Z13 a frame is about 10 ms, so a fixed per-frame cost shows as a larger percentage there than it would at a 60 fps cap.
-- Six rounds per setting; the baseline's own spread is 4-8%. Effects of 3% or less are suggestions, not findings.
-- The build is v0.4.5 plus the fork's changes, as listed. v0.4.6 changed scheduling, entry overhead and texture uploads, so these numbers should be re-checked there before acting on them.
-
-## Earlier observations on older bases (not re-measured on v0.4.5)
-
-Measured on i7 around v0.4.0-v0.4.3, listed because they are cheap negative results:
-
-- Waking only the next waiting guest did not change the race frame time (hand-off gap stayed 2.6-5.0 ms). The gap was the host scheduling the next guest, not waking too many.
-- Letting the main thread spin for its turn at the permit was neutral (-1%).
-- A main-thread profile of a race: about 34% of samples in the generated game code, 30-34% outside the executable (waits, driver, system), 14-17% drawing, 6% checked guest-memory accesses; `__savegprlr`/`__restgprlr` about 2.6% before the localized build and 1.3% after.
-- A frame's main-thread permit queueing (4-8 ms) split about half between "behind another guest" and "permit free but the main thread not yet running".
-
-## Code
-
-Branches on top of current `main` (`17506ad`, v0.4.6) are on my fork, so you can read them before deciding. I have not opened PRs; say which, if any, you want as PRs.
-
-| Branch | What | State |
-| --- | --- | --- |
-| [`pr/checkpoint-interval`](https://github.com/knuckleslee/Free-Riders-Recompiled/tree/pr/checkpoint-interval) | checkpoint call every 256 entries; `SFR_CHECKPOINT_INTERVAL` to change it | one file; data above is on v0.4.5 |
-| [`pr/render-thread`](https://github.com/knuckleslee/Free-Riders-Recompiled/tree/pr/render-thread) | render thread, on by default for D3D12 only; `SFR_RENDER_THREAD=0/1` | ordering test passes on a software Vulkan driver; never run on a device |
-| [`pr/benchmark-harness`](https://github.com/knuckleslee/Free-Riders-Recompiled/tree/pr/benchmark-harness) | the benchmark scripts, their Python tests, three small program additions (`racing=` field, menu pacing, end after the last word) | scripts ran on Windows against v0.4.5 in my fork; this trimmed version has not run on Windows yet |
-
-On all three, the Linux build passes and 122 of 123 tests pass; the one failure
-(`native_presentation`, a swap-chain growth check) fails the same way on
-unmodified `main` under a software Vulkan driver. None of them has been run on a
-Windows PC against v0.4.6 yet.
-
-I did not branch the register-locals post-processor (about 4%, high risk), the
-store-check skip (about 3%) or the two changes with no effect.
+Method, machines, per-run frame rates, limits and the code branches follow in two comments.
