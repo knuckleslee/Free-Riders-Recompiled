@@ -105,6 +105,8 @@ $settings = @{
     # a self-suspended guest is woken by polling every 1 ms again, as before
     # (baseline wakes it by notification: GuestThreads::suspension_waiter)
     'no-suspend-notify' = @{ SFR_SUSPEND_NOTIFY = '0' }
+    # draws are recorded on the calling thread again (the default: a render thread on D3D12)
+    'no-render-thread' = @{ SFR_RENDER_THREAD = '0' }
     # pipelines are only built when a draw first needs them, as before (the
     # manifest is still written: NativeRenderer::Impl::load_manifest)
     'no-prewarm'   = @{ SFR_PIPELINE_PREWARM = '0' }

@@ -1,0 +1,1 @@
+Paired A/B performance data on v0.4.5: checkpoint interval, render thread, suspend notification (i5-3470, i7-6850K, Ryzen AI MAX+ 395)
