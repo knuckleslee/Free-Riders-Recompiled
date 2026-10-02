@@ -543,3 +543,19 @@ so this is the same executable as the earlier i5 runs, measured once more. Six i
 
 Third time the i5 shows the render thread at -10% to -11% when it is off, and this run has no outlier round. The suspend
 notification is about 2% here (earlier runs on this PC: 3-4%), so on the i5 it stays a small effect.
+
+## 2026-10-03: i5, the render thread branch against main on v0.4.6
+
+`exe-a` = `pr/benchmark-harness` (v0.4.6 plus the scripts), `exe-b` = `test/render-thread-i5`, `b-no-thread` = exe-b with
+`SFR_RENDER_THREAD=0`; unlocalized generated code, six rounds, fixed order (a, b, b-no-thread). The kit still held the older
+script (no `order=` or `sha256=` in `info.txt`: the local branch it was made from had not been pulled).
+
+| Setting | Mean fps | Draw ms | Hold ms | Ratio to exe-a per round | Median |
+| --- | ---: | ---: | ---: | --- | ---: |
+| exe-a (5 runs; round 4 never raced) | 25.5 | 7.7 | 29.5 | - | - |
+| exe-b | 28.4 | 5.3 | 26.2 | 1.09 1.07 1.12 1.15 1.15 | 1.12 |
+| b-no-thread | 25.2 | 7.6 | 29.9 | 0.98 0.98 0.96 1.03 1.01 | 0.98 |
+
+The branch is 12% faster than main; with its thread off it matches main. An earlier run of the same executable twice
+(by mistake) had the second run of a round 2.4% slower in 6 of 6 rounds, and b comes second here, so the 12% is conservative.
+The script now turns the order each round and refuses two identical executables.
