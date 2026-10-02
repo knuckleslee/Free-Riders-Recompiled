@@ -1,4 +1,4 @@
-Follow-up with a measurement on v0.4.6 for the render thread branch, and a correction to my small numbers above.
+Thank you for integrating all three (#34, #35, #36) so quickly and for the fixes on top. One more measurement that may fit `docs/render-thread.md`, which quotes v0.4.5 numbers only, and a correction to my small numbers above.
 
 ## Render thread on v0.4.6 (i5-3470, Radeon RX 480, D3D12)
 
@@ -28,4 +28,4 @@ The benchmark script ran its settings in the same order every round, baseline fi
 - **Not affected in size:** render thread (about 11% on the i5, now 12% again on v0.4.6), the checkpoint interval (6-8% on three PCs), suspension notification on the Ryzen AI MAX+ 395 (about 10%).
 - **Treat as uncertain:** the ones at about 3-4% (store checks skipped, recompiled registers kept in locals, suspension notification on the i5), which may include some of that order effect.
 
-`pr/benchmark-harness` now turns the order by one place each round, refuses two executables with the same SHA-256 and records the hashes, and compares against `exe-a` when there is no `baseline`. I will repeat the small ones with the turning order if they matter to you.
+The turning order, the same-file check and the `exe-a` comparison are in the harness you merged. Your own paired checkpoint runs on the i9-14900KF/RTX 4090 (+3% to +6% on D3D12, +3% to +4% on Vulkan) point the same way as my three PCs; I was not able to measure Android, so keeping 32 there is the careful choice. I will repeat the small effects with the turning order only if they matter to you.
