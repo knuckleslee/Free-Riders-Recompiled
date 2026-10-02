@@ -298,7 +298,7 @@ foreach ($python in @(@('py', '-3'), @('python'))) {
     if (-not (Get-Command $python[0] -ErrorAction SilentlyContinue)) { continue }
     $rest = @($python | Select-Object -Skip 1)
     & $python[0] @rest (Join-Path $PSScriptRoot 'anonymize_benchmark.py') $Out --also $env:COMPUTERNAME --also $env:USERNAME
-    if (Test-Path -LiteralPath "$Out-shareable.zip") { break }
+    if (Get-ChildItem -Path "$Out-shareable*.zip" -ErrorAction SilentlyContinue) { break }
 }
 if (Test-Path -LiteralPath (Join-Path $Out 'summary.md')) { Write-Output "Logs and summary.md are in $Out" }
 else { Write-Output "No Python ran the summary; the logs are in $Out (python scripts\benchmark_summary.py `"$Out`")" }

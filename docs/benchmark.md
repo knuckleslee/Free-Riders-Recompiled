@@ -344,6 +344,8 @@ CPU 與 GPU 型號本身仍然說明你用什麼硬體；送出前請自己打�
 在另一台：解壓縮，雙擊 `run_benchmark.bat`（`run_benchmark.bat 6` 可改成每種設定 6 趟）。
 需要 Windows 10 22H2 以上；`py`（Python）有的話會自動產生摘要與去識別化版本。
 跑完它會開啟資料夾並選取 `out\bench\<時間>-shareable.zip`，把這個檔案傳回來。
+每個檔案不超過 29 MB（`anonymize_benchmark.py --limit-mb` 可改）；結果放不下時分成 `<時間>-shareable-part1of3.zip` 這樣的幾份，
+整份（所有 part）傳回來，解壓縮到同一個資料夾即可。單一檔案本身超過上限時切成 `名稱.001`、`名稱.002`，用 `copy /b` 接回。
 
 `benchmark.ps1` 現在會把 `data\pipeline-manifests` 裡作者附的清單當成「玩家拿到的清單」使用
 （`SFR_PIPELINE_MANIFEST`；如果 `out\shaders` 旁邊已經有同名清單就用那份），所以 `baseline` 與

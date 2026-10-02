@@ -44,7 +44,7 @@ echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\benchmark.ps1" -SkipBuildCheck -Configs %CONFIGS% -Repeats %REPEATS% %EXTRA% %GAMEARGS%
 echo.
 set LATEST=
-for /f "delims=" %%Z in ('dir /b /o-d "out\bench\*-shareable.zip" 2^>nul') do (
+for /f "delims=" %%Z in ('dir /b /o-d "out\bench\*-shareable*.zip" 2^>nul') do (
     set LATEST=%%Z
     goto found
 )
@@ -53,6 +53,7 @@ echo Send the newest folder in out\bench instead, and it will be prepared on the
 goto done
 :found
 echo Send this file: out\bench\%LATEST%
+if not "%LATEST:-part=%"=="%LATEST%" echo It is one of several parts (each under 29 MB): send ALL the files out\bench\%LATEST:~0,15%-shareable-part*.zip
 explorer /select,"%~dp0out\bench\%LATEST%"
 goto done
 :noexe
