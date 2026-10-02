@@ -26,6 +26,7 @@ param(
     [int]$TimeoutMinutes = 25,        # a run that takes longer is stopped
     [int]$ScreenshotEvery = 0,         # a screenshot every N presents in every run (a diagnostic: it slows the run)
     [switch]$NoWarmup,                # the first run fills the shader caches
+    [switch]$FixedOrder,              # the settings in the same order every round (the default turns the order each round)
     [switch]$SkipBuildCheck,          # a copied folder (no git): its files' times say nothing about the build
     [switch]$Capped,                  # 60 fps as when playing, not as fast as it goes
     [switch]$ColdPipelines,           # every run starts without pipeline-cache: a new player's first race
@@ -137,6 +138,19 @@ foreach ($name in $Configs) {
     }
 }
 
+# Two different executables must differ: copying the same build under both names compares
+# a program with itself.
+$exeFiles = @{}
+foreach ($name in $Configs) { if ($settings[$name].ContainsKey('SFR_EXE')) { $exeFiles[$settings[$name]['SFR_EXE']] = $true } }
+if ($exeFiles.Count -ge 2) {
+    $seen = @{}
+    foreach ($file in $exeFiles.Keys) {
+        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $host_dir $file)).Hash
+        if ($seen.ContainsKey($hash)) { throw "$file and $($seen[$hash]) are the same program (same SHA-256): build the second one before copying it" }
+        $seen[$hash] = $file
+    }
+}
+
 # The launcher's defaults (launcher_settings.cpp game_environment), then what
 # makes a run unattended and alike.
 $base = [ordered]@{
@@ -209,7 +223,7 @@ Write-Output "PC: $power, power plan '$plan', $idle% busy before the start"
 @("commit=$commit", "generated=$generated", "model=$model", "cpu=$cpu", "gpu=$gpu", "driver=$driver", "power=$power plan=$plan idle_cpu_percent=$idle",
   "cold_pipelines=$([bool]$ColdPipelines)", "os=$([Environment]::OSVersion.VersionString)",
   "configs=$($Configs -join ',') repeats=$Repeats present_limit=$PresentLimit stretch=$([bool]$Stretch) capped=$([bool]$Capped)",
-  "say=$Say") | Set-Content -LiteralPath (Join-Path $Out 'info.txt') -Encoding UTF8
+  "say=$Say", "order=$(if ($FixedOrder) { 'fixed' } else { 'turning' })") | Set-Content -LiteralPath (Join-Path $Out 'info.txt') -Encoding UTF8
 
 $ab = Join-Path $host_dir 'ab.txt'
 if (Test-Path -LiteralPath $ab) { Copy-Item -LiteralPath $ab -Destination $Out }
@@ -219,7 +233,15 @@ if ($generated -and (Test-Path -LiteralPath (Join-Path $generated 'localize_repo
 
 $runs = New-Object System.Collections.Generic.List[object]
 if (-not $NoWarmup) { $runs.Add(@('warmup', 1)) }
-for ($r = 1; $r -le $Repeats; ++$r) { foreach ($name in $Configs) { $runs.Add(@($name, $r)) } }
+# The order turns by one place each round (a b c, then b c a, then c a b), so no setting is
+# always the first or the last of its round: a run that comes later in a round was measured
+# slower than the same program earlier in it (2.4% on one PC), and with a fixed order that
+# would be charged to the setting that happens to come later.
+for ($r = 1; $r -le $Repeats; ++$r) {
+    $shift = if ($FixedOrder) { 0 } else { ($r - 1) % $Configs.Count }
+    $order = if ($shift) { @($Configs | Select-Object -Skip $shift) + @($Configs | Select-Object -First $shift) } else { @($Configs) }
+    foreach ($name in $order) { $runs.Add(@($name, $r)) }
+}
 
 function Start-Run([string]$name, [int]$repeat) {
     foreach ($key in $cleared) { Remove-Item "Env:$key" -ErrorAction SilentlyContinue }
