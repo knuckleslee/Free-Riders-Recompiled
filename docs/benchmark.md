@@ -529,3 +529,17 @@ AMD Ryzen AI MAX+ 395／Radeon 8060S／Windows 11，接電、電源計畫 Turbo�
 | 暫停通知 | +3%（扣掉離群輪後 4/5） | +5%（前一次，6 對 6） | +10%（6/6） |
 | 略過保留／釘住檢查 | +3%（5/5） | 約 +3%（前一次，單獨量） | 未量 |
 | 暫存器區域變數 | +4%（5/6） | 未量 | 未量 |
+
+## 2026-10-02 evening: i5 `speed` again on the same v0.4.5-based build (commit `d253c59`)
+
+Not the v0.4.6 render thread branch: `info.txt` shows `commit=d253c59` and the settings of the old `speed` mode,
+so this is the same executable as the earlier i5 runs, measured once more. Six interleaved rounds, baseline spread 3%.
+
+| Setting | Mean fps | Per-round ratios to baseline | Median | Faster rounds |
+| --- | ---: | --- | ---: | ---: |
+| baseline | 30.5 | - | - | - |
+| render thread off | 27.4 | 0.87 0.90 0.89 0.89 0.90 0.91 | 0.89 | 0/6 |
+| suspend notification off | 29.9 | 0.95 0.99 0.96 0.95 0.99 0.99 | 0.98 | 0/6, inside the noise |
+
+Third time the i5 shows the render thread at -10% to -11% when it is off, and this run has no outlier round. The suspend
+notification is about 2% here (earlier runs on this PC: 3-4%), so on the i5 it stays a small effect.
