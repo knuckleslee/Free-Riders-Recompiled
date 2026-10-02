@@ -104,6 +104,8 @@ $settings = @{
     'exe-b'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
     # the same file as exe-b under another name: a control that shows what comparing a program with itself gives
     'exe-b-again'  = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
+    # the checkpoint call into the permit every 32 entries, as v0.4.5 and v0.4.6 have it (baseline: 256)
+    'checkpoint-32' = @{ SFR_CHECKPOINT_INTERVAL = '32' }
     # samples the main thread every millisecond during the race (from present
     # 12200); profile.md names the functions (scripts/profile_summary.py)
     'profile'      = @{ SFR_MAIN_PROFILE = '1'; SFR_PROFILE_AFTER = '12200' }
