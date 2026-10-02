@@ -5,6 +5,7 @@ rem   run_benchmark.bat pipelines    a new player first race, with and without t
 rem   run_benchmark.bat speed 8      the same with 8 rounds
 rem   run_benchmark.bat ab           the generated code as recompiled against its registers in locals (needs scripts\build_ab.ps1's two programs)
 rem   run_benchmark.bat fast         suspend notification, render thread and the stores' checks, 6 rounds
+rem   run_benchmark.bat ckpt         the checkpoint interval 256 (baseline) against 1024 and 4096
 rem   run_benchmark.bat paths        partial vector stores, pipeline reuse and the checkpoint interval, 6 rounds
 rem   run_benchmark.bat speed 2 nostretch   the menu words by presents alone (cannot finish on a fast PC)
 setlocal
@@ -19,6 +20,7 @@ set EXTRA=
 if "%REPEATS%"=="" set REPEATS=6
 if /i "%MODE%"=="ab" set CONFIGS=plain,local
 if /i "%MODE%"=="fast" set CONFIGS=baseline,no-suspend-notify,no-render-thread,strict-memory
+if /i "%MODE%"=="ckpt" set CONFIGS=baseline,checkpoint-1024,checkpoint-4096
 if /i "%MODE%"=="paths" set CONFIGS=baseline,no-partial-stores,no-pipeline-reuse,checkpoint-32
 if /i "%MODE%"=="pipelines" (
     set CONFIGS=baseline,no-prewarm

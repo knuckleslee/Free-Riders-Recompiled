@@ -107,6 +107,8 @@ $settings = @{
     'no-partial-stores' = @{ SFR_FAST_PARTIAL_STORES = '0' }
     'no-pipeline-reuse' = @{ SFR_PIPELINE_REUSE = '0' }
     'checkpoint-32'     = @{ SFR_CHECKPOINT_INTERVAL = '32' }
+    'checkpoint-1024'   = @{ SFR_CHECKPOINT_INTERVAL = '1024' }
+    'checkpoint-4096'   = @{ SFR_CHECKPOINT_INTERVAL = '4096' }
     # another executable of the same sources and commit, in the same folder
     # (scriptsuild_ab.ps1): the generated code as the game was recompiled
     # (plain) or with its registers kept in locals (local). SFR_EXE is not
