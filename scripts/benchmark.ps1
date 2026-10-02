@@ -107,6 +107,11 @@ $settings = @{
     'no-partial-stores' = @{ SFR_FAST_PARTIAL_STORES = '0' }
     'no-pipeline-reuse' = @{ SFR_PIPELINE_REUSE = '0' }
     'checkpoint-32'     = @{ SFR_CHECKPOINT_INTERVAL = '32' }
+    # the original's own opt-in or default-on experiments, still unconfirmed on the handheld
+    # (docs/handheld-performance-2026-09-30.md): each differs from baseline by this one switch
+    'constant-reuse'    = @{ SFR_CONSTANT_UPLOAD_REUSE = '1' }       # exact 4 KiB constant uploads reused (off by default)
+    'priority'          = @{ SFR_GUEST_SATURATED_PRIORITY = '1' }    # saturated guests' host priority raised (off by default)
+    'no-host-timing'    = @{ SFR_HOST_TIMING = '0' }                 # the host timer and speed policy left alone (on by default)
     'checkpoint-1024'   = @{ SFR_CHECKPOINT_INTERVAL = '1024' }
     'checkpoint-4096'   = @{ SFR_CHECKPOINT_INTERVAL = '4096' }
     # another executable of the same sources and commit, in the same folder
