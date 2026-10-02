@@ -133,6 +133,20 @@ Measured on i7 around v0.4.0-v0.4.3, listed because they are cheap negative resu
 - A main-thread profile of a race: about 34% of samples in the generated game code, 30-34% outside the executable (waits, driver, system), 14-17% drawing, 6% checked guest-memory accesses; `__savegprlr`/`__restgprlr` about 2.6% before the localized build and 1.3% after.
 - A frame's main-thread permit queueing (4-8 ms) split about half between "behind another guest" and "permit free but the main thread not yet running".
 
-## Offer
+## Code
 
-I can send the three pieces as separate draft PRs on top of v0.4.6, each with an off switch, and the benchmark scripts as a fourth: an unattended run from the menus to the finish, round-by-round comparison, noise estimate, and a report tool that strips user names and drops logs. Say which of them, if any, you would like, or that none are wanted.
+Branches on top of current `main` (`17506ad`, v0.4.6) are on my fork, so you can read them before deciding. I have not opened PRs; say which, if any, you want as PRs.
+
+| Branch | What | State |
+| --- | --- | --- |
+| [`pr/checkpoint-interval`](https://github.com/knuckleslee/Free-Riders-Recompiled/tree/pr/checkpoint-interval) | checkpoint call every 256 entries; `SFR_CHECKPOINT_INTERVAL` to change it | one file; data above is on v0.4.5 |
+| [`pr/render-thread`](https://github.com/knuckleslee/Free-Riders-Recompiled/tree/pr/render-thread) | render thread, on by default for D3D12 only; `SFR_RENDER_THREAD=0/1` | ordering test passes on a software Vulkan driver; never run on a device |
+| [`pr/benchmark-harness`](https://github.com/knuckleslee/Free-Riders-Recompiled/tree/pr/benchmark-harness) | the benchmark scripts, their Python tests, three small program additions (`racing=` field, menu pacing, end after the last word) | scripts ran on Windows against v0.4.5 in my fork; this trimmed version has not run on Windows yet |
+
+On all three, the Linux build passes and 122 of 123 tests pass; the one failure
+(`native_presentation`, a swap-chain growth check) fails the same way on
+unmodified `main` under a software Vulkan driver. None of them has been run on a
+Windows PC against v0.4.6 yet.
+
+I did not branch the register-locals post-processor (about 4%, high risk), the
+store-check skip (about 3%) or the two changes with no effect.
