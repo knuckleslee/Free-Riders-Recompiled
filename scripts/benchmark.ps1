@@ -101,6 +101,8 @@ $settings = @{
     # and sfr_cpu_diagnostic_b.exe. SFR_EXE names the file and is not passed on to the game.
     'exe-a'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_a.exe' }
     'exe-b'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
+    # build b with its render thread off: if it matches exe-a, the thread is the whole difference
+    'b-no-thread'  = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe'; SFR_RENDER_THREAD = '0' }
     # samples the main thread every millisecond during the race (from present
     # 12200); profile.md names the functions (scripts/profile_summary.py)
     'profile'      = @{ SFR_MAIN_PROFILE = '1'; SFR_PROFILE_AFTER = '12200' }
