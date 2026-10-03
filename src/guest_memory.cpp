@@ -681,8 +681,8 @@ bool GuestMemory::readable(uint64_t address, uint64_t size) const noexcept {
            (std::atomic_ref<uint8_t>(fast_pages_[page]).load(std::memory_order_relaxed) & fast_access)) ++page;
     if (page > last) return true;
     const auto layout = read_layout();
-    for (const auto& variable : variables_)
-        if (address < uint64_t(variable.address) + 4 && variable.address < address + size) return false;
+    // Unmapped first: the renderer asks about physical views that mostly are
+    // not mapped, for every draw.
     uint64_t covered = address;
     const uint64_t end = address + size;
     while (covered < end) {
@@ -690,7 +690,7 @@ bool GuestMemory::readable(uint64_t address, uint64_t size) const noexcept {
         if (!r) return false;
         covered = r->address + r->size;
     }
-    return true;
+    return !overlaps_word(variable_words_, address, size);
 }
 
 const GuestMemory::Region* GuestMemory::committed_region(uint64_t address) const {
@@ -711,9 +711,10 @@ void GuestMemory::check(uint64_t address, uint64_t size) const {
            (std::atomic_ref<uint8_t>(fast_pages_[page]).load(std::memory_order_relaxed) & fast_access)) ++page;
     if (page > last) return;
     const auto layout = read_layout();
-    for (const auto& variable : variables_)
-        if (address < uint64_t(variable.address) + 4 && variable.address < address + size)
-            throw RuntimeStop("import-variable", variable.address, variable.name);
+    if (overlaps_word(variable_words_, address, size))  // then find its name
+        for (const auto& variable : variables_)
+            if (address < uint64_t(variable.address) + 4 && variable.address < address + size)
+                throw RuntimeStop("import-variable", variable.address, variable.name);
     // Adjacent committed regions (e.g. separately committed heap chunks) form
     // one contiguous range; an object may straddle their boundary.
     uint64_t covered = address;
@@ -730,7 +731,8 @@ void GuestMemory::add_import_variable(uint32_t address, std::string name) {
     check_pending_writes(address,4);
     std::unique_lock layout(layout_mutex_);
     variables_.push_back({address, std::move(name)});
-    special_words_.push_back(address);
+    special_words_.insert(std::upper_bound(special_words_.begin(), special_words_.end(), address), address);
+    variable_words_.insert(std::upper_bound(variable_words_.begin(), variable_words_.end(), address), address);
     rebuild_fast_pages(address, 4);
 }
 
@@ -751,9 +753,7 @@ __attribute__((noinline)) bool GuestMemory::special_word(uint64_t address, uint6
     // Runtime registration may grow the vector beside detached guest readers.
     // Most memory pages never call this; only guarded import/provider pages do.
     auto layout = read_layout();
-    for (const uint32_t word : special_words_)
-        if (address < uint64_t(word)+4 && word < address+size) return true;
-    return false;
+    return overlaps_word(special_words_, address, size);
 }
 
 uint8_t GuestMemory::partial_fast_page(uint64_t address, uint64_t size, uint8_t page) const {
@@ -1041,7 +1041,7 @@ void GuestMemory::add_read_only_word(uint32_t address, std::function<uint32_t()>
     // first publication so readers can keep a stable pointer after unlocking.
     if (read_only_words_.empty()) read_only_words_.reserve(read_only_word_limit);
     read_only_words_.push_back({address, std::move(provider), access});
-    special_words_.push_back(address);
+    special_words_.insert(std::upper_bound(special_words_.begin(), special_words_.end(), address), address);
     rebuild_fast_pages(address, 4);
 }
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -247,7 +248,17 @@ private:
     std::unique_ptr<uint16_t[]> partial_page_ends_;
     // Addresses of import variables and computed words, including guarded
     // fields registered when a guest thread is created.
+    // Both sorted: special_word and the checks look a word up instead of
+    // scanning hundreds (every import variable, and the computed words of
+    // each guest thread) on every access to a page that holds one.
     std::vector<uint32_t> special_words_;
+    std::vector<uint32_t> variable_words_;  // import variables only
+    // Whether a sorted word overlaps [address, address + size).
+    static bool overlaps_word(const std::vector<uint32_t>& words, uint64_t address, uint64_t size) {
+        auto at = std::lower_bound(words.begin(), words.end(), address > 3 ? address - 3 : 0,
+                                   [](uint32_t word, uint64_t value) { return word < value; });
+        return at != words.end() && *at < address + size;
+    }
     // Keep the lock/scan out of every generated PPC load's instruction body.
     bool special_word(uint64_t address, uint64_t size) const;
     uint8_t fast_page(uint64_t address, uint64_t size) const {

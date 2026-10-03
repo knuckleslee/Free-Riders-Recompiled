@@ -520,6 +520,34 @@ static void fast_path_matches_members() {
                  "a fast store to a pinned page is refused");
 }
 
+// The sorted special words: many variables on two pages, registered out of
+// order, against a brute-force overlap test for unaligned loads of every size.
+static void many_special_words_are_looked_up() {
+    sfr::GuestMemory memory;
+    memory.map(0x30000, 0x2000);
+    std::vector<uint32_t> variables;
+    for (uint32_t i = 0; i < 300; ++i) variables.push_back(0x30000 + ((i * 2654435761u) % 0x1FF0 & ~3u));
+    std::sort(variables.begin(), variables.end());
+    variables.erase(std::unique(variables.begin(), variables.end()), variables.end());
+    std::vector<uint32_t> order = variables;
+    std::reverse(order.begin(), order.end());
+    for (const uint32_t address : order) memory.add_import_variable(address, "v");
+    for (uint64_t address = 0x30000; address < 0x31FF8; address += 7)
+        for (const uint64_t size : {1ull, 2ull, 4ull, 8ull}) {
+            bool overlaps = false;
+            for (const uint32_t v : variables) overlaps |= address < uint64_t(v) + 4 && v < address + size;
+            require(memory.readable(address, size) == !overlaps, "readable agrees with every variable");
+            bool stopped = false;
+            try {
+                if (size == 1) memory.load<uint8_t>(address);
+                else if (size == 2) memory.load<uint16_t>(address);
+                else if (size == 4) memory.load<uint32_t>(address);
+                else memory.load<uint64_t>(address);
+            } catch (const sfr::RuntimeStop& stop) { stopped = stop.category == "import-variable"; }
+            require(stopped == overlaps, "a load stops exactly where it overlaps a variable");
+        }
+}
+
 static void provider_guard_survives_unrelated_import_registration() {
     sfr::GuestMemory memory;
     memory.map(0x10000, 0x2000000);
@@ -1534,6 +1562,7 @@ int main() {
         top_down_search_matches_page_oracle();
         partial_page_fast_access();
         fast_path_matches_members();
+        many_special_words_are_looked_up();
         sfr::GuestMemory memory;
         memory.map(0x10000, 0x1000);
         memory.store<uint32_t>(0x10003, 0x12345678);
