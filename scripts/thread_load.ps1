@@ -2,7 +2,7 @@
 # race in this port and the same race in Xenia can be put side by side on one PC:
 # is one thread saturated, and how much of the other cores is in use.
 #
-#   scripts\thread_load.ps1 -ProcessName xenia_canary      # Enter starts the sampling
+#   scripts\thread_load.ps1 -Label xenia                   # starts sampling at once
 #   scripts\thread_load.ps1 -ProcessName sfr_cpu_diagnostic -Delay 5 -Seconds 60
 #
 # Start the race first (Free Race, same course and character, nobody at the
@@ -13,7 +13,7 @@ param(
     [string]$ProcessName = '',             # without .exe; empty: the first of the known names that is running
     [ValidateRange(5, 3600)][int]$Seconds = 60,
     [ValidateRange(0.25, 10.0)][double]$Interval = 1.0,
-    [int]$Delay = -1,                      # seconds to wait before sampling; -1: wait for Enter
+    [int]$Delay = 0,                       # seconds to wait before sampling; -1: wait for Enter
     [string]$Label = '',                   # a word for the folder name: xenia, port, ...
     [string]$Out = ''
 )
