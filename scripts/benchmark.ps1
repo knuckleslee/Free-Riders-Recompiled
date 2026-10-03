@@ -136,6 +136,8 @@ $settings = @{
     'exe-b'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
     'exe-c'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_c.exe' }   # a third build (scripts/build_ab.ps1 -Local)
     'exe-d'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_d.exe' }   # checkpoints only at loops (scripts/build_ab.ps1 -Loops)
+    'exe-e'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_e.exe' }   # profile-guided (scripts/build_pgo.ps1)
+    'pgo-train'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_train.exe' }   # its training runs, started by scripts/build_pgo.ps1
     # the same file as exe-b under another name: a control that shows what comparing a program with itself gives
     'exe-b-again'  = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
     # samples the main thread every millisecond while the race flag is set

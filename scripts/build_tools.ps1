@@ -1,4 +1,7 @@
-param([int]$Jobs = 4, [switch]$Diagnostic, [string]$DiagnosticDirectory = 'out/recomp/diagnostic')
+# -BuildDirectory, -PgoGenerate and -PgoUse are for scripts\build_pgo.ps1: profile-guided
+# builds of the game go to their own directories, so out\build\host keeps its usual build.
+param([int]$Jobs = 4, [switch]$Diagnostic, [string]$DiagnosticDirectory = 'out/recomp/diagnostic',
+      [string]$BuildDirectory = 'out\build\host', [switch]$PgoGenerate, [string]$PgoUse = '')
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -23,10 +26,24 @@ if ($env:VSCMD_ARG_TGT_ARCH -ne 'x64' -or -not $env:VCToolsInstallDir) {
 $llvmBin = Split-Path -Parent $compiler
 if (-not $env:PATH.StartsWith($llvmBin + ';')) { $env:PATH = $llvmBin + ';' + $env:PATH }
 $source = $repoRoot
-$build = Join-Path $repoRoot 'out\build\host'
+$build = [IO.Path]::GetFullPath((Join-Path $repoRoot $BuildDirectory))
 $diagnosticOption = if ($Diagnostic) { 'ON' } else { 'OFF' }
 $diagnosticPath = [IO.Path]::GetFullPath((Join-Path $repoRoot $DiagnosticDirectory))
-& cmake -S $source -B $build -G Ninja '-DCMAKE_BUILD_TYPE=Release' "-DCMAKE_C_COMPILER=$compiler" "-DCMAKE_CXX_COMPILER=$compiler" '-DCMAKE_POLICY_VERSION_MINIMUM=3.5' "-DSFR_BUILD_DIAGNOSTIC=$diagnosticOption" "-DSFR_DIAGNOSTIC_DIR=$diagnosticPath"
+# Always given, so a build directory never keeps a profile-guided setting from before.
+$pgoRuntime = ''
+if ($PgoGenerate) {
+    if (-not $Diagnostic) { throw '-PgoGenerate instruments the game: it needs -Diagnostic.' }
+    # clang_rt.profile-x86_64.lib (older LLVM) or x86_64-pc-windows-msvc\clang_rt.profile.lib.
+    $runtime = Get-ChildItem -Recurse -File -Path (Join-Path (Split-Path -Parent $llvmBin) 'lib\clang') -Filter 'clang_rt.profile*.lib' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq 'clang_rt.profile-x86_64.lib' -or ($_.Name -eq 'clang_rt.profile.lib' -and $_.DirectoryName -match 'x86_64') } |
+        Select-Object -First 1
+    if (-not $runtime) { throw "No clang_rt.profile library under $(Split-Path -Parent $llvmBin)\lib\clang: this LLVM cannot make instrumented builds." }
+    $pgoRuntime = $runtime.FullName
+}
+if ($PgoUse -and -not [IO.Path]::IsPathRooted($PgoUse)) { $PgoUse = Join-Path $repoRoot $PgoUse }
+if ($PgoUse) { $PgoUse = [IO.Path]::GetFullPath($PgoUse) }
+$pgoGenerateOption = if ($PgoGenerate) { 'ON' } else { 'OFF' }
+& cmake -S $source -B $build -G Ninja '-DCMAKE_BUILD_TYPE=Release' "-DCMAKE_C_COMPILER=$compiler" "-DCMAKE_CXX_COMPILER=$compiler" '-DCMAKE_POLICY_VERSION_MINIMUM=3.5' "-DSFR_BUILD_DIAGNOSTIC=$diagnosticOption" "-DSFR_DIAGNOSTIC_DIR=$diagnosticPath" "-DSFR_PGO_GENERATE=$pgoGenerateOption" "-DSFR_PGO_RUNTIME=$pgoRuntime" "-DSFR_PGO_USE=$PgoUse"
 if ($LASTEXITCODE -ne 0) { throw 'Xenon tools configure failed.' }
 $targets = @('XenonAnalyse', 'XenonRecomp', 'sfr_image_dump', 'sfr_memory_test', 'sfr_xex_module_test', 'sfr_virtual_memory_test', 'sfr_critical_section_test', 'sfr_hardware_info_test', 'sfr_thread_local_storage_test', 'sfr_system_time_test', 'sfr_guest_clock_test', 'sfr_timestamp_bundle_test')
 $targets += 'sfr_vector_memory_test'
@@ -152,5 +169,7 @@ $targets += 'sfr_native_notification_event_test'
 $targets += 'sfr_native_notifications_test'
 $targets += 'sfr_notification_placement_test'
 if ($Diagnostic) { $targets += 'sfr_cpu_diagnostic'; $targets += 'sfr_native_winsock_test' }
+# A profile-guided build is only ever the game.
+if ($PgoGenerate -or $PgoUse) { $targets = @('sfr_cpu_diagnostic') }
 & cmake --build $build --target $targets --parallel $Jobs
 if ($LASTEXITCODE -ne 0) { throw 'Xenon tools build failed.' }

@@ -54,6 +54,9 @@ public:
         void attach_self();
     public:
         bool detached() const { return detached_; }
+        // For the inline function entry of this lease's own thread, which
+        // alone changes it (GuestEntryState::permit_detached).
+        const bool* detached_flag() const { return &detached_; }
         // A second permit this thread holds under this one (a console
         // core's, while this is the global permit), taken always after this
         // one: attach(), run_blocking() and a checkpoint's handoff release it

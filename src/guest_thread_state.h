@@ -17,9 +17,17 @@ struct GuestReservation {
 struct GuestEntryState {
     // The permit needs one checkpoint in every few dozen (guest_checkpoint).
     uint32_t checkpoint_countdown = 0;
-    // The function this thread entered last (named when it stops).
+    // The function this thread entered last. Every entry records the
+    // address: two audited hooks decide by it (call_indirect's profile reset,
+    // the VdGlobalDevice read). The name is only for messages, so only the
+    // observed entry stores it, with the address it belongs to;
+    // last_function_name() falls back to sub_XXXXXXXX when they differ.
     const char* current_function = "";
     uint32_t current_address = 0;
+    uint32_t named_address = 0;
+    // A guest running beside the permit: its permit's detached flag, so an
+    // entry can tell inline whether parallel_function_entry has anything to do.
+    const bool* permit_detached = nullptr;
     // Whether this thread's entries do more than checkpoint and name
     // themselves: a guest running beside the permit, an audit in progress,
     // the entry diagnostics. Until a thread sets it from what applies, every

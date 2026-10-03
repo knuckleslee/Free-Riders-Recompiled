@@ -1,7 +1,9 @@
 #include "diagnostic_hooks.h"
 #include "guest_checkpoint_interval.h"
 #include "guest_execution.h"
+#include <algorithm>
 #include <atomic>
+#include <iterator>
 #include <chrono>
 #include <exception>
 #include <future>
@@ -13,12 +15,21 @@ struct PPCContext {};
 namespace sfr {
 thread_local uint32_t test_checkpoint_interval = 32, test_checkpoint_calls = 0;
 thread_local GuestExecution::Lease* test_checkpoint_lease = nullptr;
+thread_local uint32_t test_observed_calls = 0;
+bool is_hook_outside_the_image(uint32_t) { return false; }
 void guest_checkpoint_permit() {
     guest_thread_state.entry.checkpoint_countdown = test_checkpoint_interval - 1;
     ++test_checkpoint_calls;
     if (test_checkpoint_lease) test_checkpoint_lease->checkpoint();
 }
 void enter_function_observed(PPCContext&, const char* name, uint32_t address) {
+    ++test_observed_calls;
+    if (guest_thread_state.entry.parallel) {  // as diagnostic_main's: observed stays set
+        guest_checkpoint();
+        guest_thread_state.entry.current_function = name;
+        guest_thread_state.entry.current_address = guest_thread_state.entry.named_address = address;
+        return;
+    }
     guest_thread_state.entry.observed = false;
     guest_thread_state.entry.current_function = name;
     guest_thread_state.entry.current_address = address;
@@ -115,8 +126,50 @@ static void urgent_handoff_at_next_entry_interval() {
     sfr::guest_thread_state.entry = {};
 }
 
+// A detached, unwatched guest beside the permit enters ordinary functions
+// inline; a hook, an attached permit or a watch still take the full entry.
+static void parallel_entries_stay_inline() {
+    auto& entry = sfr::guest_thread_state.entry;
+    entry = {};
+    sfr::test_checkpoint_interval = 32;
+    entry.parallel = true;
+    entry.watched = false;
+    entry.observed = true;
+    bool detached = true;
+    entry.permit_detached = &detached;
+    constexpr uint32_t hook = 0x82000040;
+    sfr::hook_bits[(hook - sfr::hook_base) / 4 / 64] |= uint64_t(1) << ((hook - sfr::hook_base) / 4 % 64);
+    struct ClearHook { ~ClearHook() { std::fill(std::begin(sfr::hook_bits), std::end(sfr::hook_bits), 0); } } clear;
+    PPCContext context;
+    sfr::test_observed_calls = sfr::test_checkpoint_calls = 0;
+    entry.checkpoint_countdown = 5;
+    sfr::enter_function(context, "plain", 0x82000010);
+    require(sfr::test_observed_calls == 0 && entry.current_address == 0x82000010 && entry.checkpoint_countdown == 4,
+            "a detached worker enters an ordinary function inline, counting the checkpoint");
+    entry.checkpoint_countdown = 0;
+    sfr::enter_function(context, "plain", 0x82000014);
+    require(sfr::test_observed_calls == 0 && sfr::test_checkpoint_calls == 1 && entry.checkpoint_countdown == 31,
+            "the inline entry still reaches the permit at the interval");
+    sfr::enter_function(context, "hook", hook);
+    require(sfr::test_observed_calls == 1 && entry.current_address == hook, "a hook takes the full entry");
+    detached = false;
+    sfr::enter_function(context, "attached", 0x82000018);
+    require(sfr::test_observed_calls == 2, "an attached permit takes the full entry");
+    detached = true;
+    entry.watched = true;
+    sfr::enter_function(context, "watched", 0x8200001c);
+    require(sfr::test_observed_calls == 3, "a watched thread takes the full entry");
+    entry.watched = false;
+    entry.permit_detached = nullptr;
+    sfr::enter_function(context, "no-flag", 0x82000020);
+    require(sfr::test_observed_calls == 4, "without its permit's flag a parallel guest takes the full entry");
+    entry = {};
+    sfr::test_checkpoint_calls = sfr::test_observed_calls = 0;
+}
+
 int main() {
     try {
+        parallel_entries_stay_inline();
         checkpoint_interval_contract();
         urgent_handoff_at_next_entry_interval();
         sfr::GuestMemory memory;

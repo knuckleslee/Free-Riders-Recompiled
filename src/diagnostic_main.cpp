@@ -71,6 +71,7 @@
 #include <iostream>
 #include <condition_variable>
 #include <deque>
+#include <cstdio>
 #include <map>
 #include <tuple>
 #include <mutex>
@@ -461,6 +462,17 @@ void prepare_worker_self_suspend() {
     if (detached) execution_permit->detach();
 }
 
+// The function a thread entered last, for messages: the name the observed
+// entry recorded when it is still the latest, else from the address.
+static std::string last_function_name() {
+    const auto& entry = guest_thread_state.entry;
+    if (entry.named_address == entry.current_address && entry.current_function && *entry.current_function)
+        return entry.current_function;
+    char text[16];
+    std::snprintf(text, sizeof(text), "sub_%08X", entry.current_address);
+    return text;
+}
+
 static void parallel_slow_access(uint64_t address) {
     if (!execution_permit || !execution_permit->detached()) return;
     static const bool trace = [] { const char* t = std::getenv("SFR_PARALLEL_TRACE"); return t && *t != '0'; }();
@@ -469,7 +481,7 @@ static void parallel_slow_access(uint64_t address) {
         const uint64_t count = ++pages[uint32_t(address >> 12)];
         if ((count & (count - 1)) == 0 && count >= 256)
             std::cerr << "PARALLEL_SLOW page=0x" << std::hex << (address >> 12) << "000 address=0x" << address
-                      << std::dec << " count=" << count << " function=" << guest_thread_state.entry.current_function << char(10);
+                      << std::dec << " count=" << count << " function=" << last_function_name() << char(10);
     }
     execution_permit->attach();
     parallel_attached(2);
@@ -3010,7 +3022,7 @@ void enter_function_observed(PPCContext& ctx, const char* name, uint32_t address
     // Cheap enough to keep either way: a stop still names the function it
     // happened in.
     entry.current_function = name;
-    entry.current_address = address;
+    entry.current_address = entry.named_address = address;
     // A guest playing beside the permit is here for parallel_function_entry
     // and nothing below.
     if (!entry.watched) [[likely]] return;
@@ -3984,6 +3996,7 @@ int main(int argc, char** argv) {
                                  state.worker == sfr::parallel_worker_entry))) {
                             std::cerr << "PARALLEL_WORKER guest_id=" << state.id << " processor=" << processor << '\n';
                             sfr::guest_thread_state.entry.parallel = true;
+                            sfr::guest_thread_state.entry.permit_detached = permit->detached_flag();
                             sfr::GuestMemory::concurrent_reader = true;
                             sfr::GuestMemory::slow_access_hook = sfr::parallel_slow_access;
                             permit->detach();
@@ -4064,6 +4077,7 @@ int main(int argc, char** argv) {
                         sfr::note_finished();
                         permit.reset();
                         sfr::execution_permit = nullptr;
+                        sfr::guest_thread_state.entry.permit_detached = nullptr;
                         sfr::core_permit.reset();
                         sfr::current_context = nullptr;
                         return exit.code;
@@ -4073,7 +4087,7 @@ int main(int argc, char** argv) {
                         const auto cause = std::current_exception();
                         try {
                             std::ostringstream trace;
-                            trace << error.detail << " [guest_id=" << state.id << " function=" << sfr::guest_thread_state.entry.current_function
+                            trace << error.detail << " [guest_id=" << state.id << " function=" << sfr::last_function_name()
                                   << " address=0x" << std::hex << sfr::guest_thread_state.entry.current_address << " LR=0x" << context->lr
                                   << " r1=0x" << context->r1.u32 << " r3=0x" << context->r3.u32
                                   << " r10=0x" << context->r10.u32 << " r11=0x" << context->r11.u32
@@ -4085,6 +4099,7 @@ int main(int argc, char** argv) {
                         execution.fail(std::current_exception());
                     }
                     sfr::execution_permit = nullptr;
+                    sfr::guest_thread_state.entry.permit_detached = nullptr;
                     sfr::core_permit.reset();
                     sfr::current_context = nullptr;
                     return 0;
@@ -4353,7 +4368,7 @@ int main(int argc, char** argv) {
         return 4;
     } catch (const sfr::RuntimeStop& error) {
         std::cerr << "STOP " << error.category << " @0x" << std::hex << error.address << ": " << error.detail
-                  << "\nLAST_FUNCTION " << sfr::guest_thread_state.entry.current_function << " @0x" << sfr::guest_thread_state.entry.current_address
+                  << "\nLAST_FUNCTION " << sfr::last_function_name() << " @0x" << sfr::guest_thread_state.entry.current_address
                   << " LR=0x" << ctx.lr << std::dec << " calls=" << sfr::calls << '\n';
         return 3;
     } catch (const std::exception& error) {

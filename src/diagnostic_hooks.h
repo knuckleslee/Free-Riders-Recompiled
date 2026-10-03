@@ -60,12 +60,17 @@ void enter_function_observed(PPCContext&, const char*, uint32_t);
 inline void enter_function(PPCContext& ctx, const char* name, uint32_t address) {
     GuestEntryState& entry = guest_thread_state.entry;
     if (entry.observed) [[unlikely]] {
-        enter_function_observed(ctx, name, address);
-        return;
+        // A guest beside the permit, detached and unwatched, entering a
+        // function that is no hook: parallel_function_entry would only
+        // return, so this is all enter_function_observed would do. In the
+        // cores and all modes that is nearly every entry of every worker.
+        if (!(entry.permit_detached && !entry.watched && *entry.permit_detached && !is_hook(address))) {
+            enter_function_observed(ctx, name, address);
+            return;
+        }
     }
     if (entry.checkpoint_countdown) [[likely]] --entry.checkpoint_countdown;
     else guest_checkpoint_permit();
-    entry.current_function = name;
     entry.current_address = address;
 }
 void call_indirect(PPCContext&, uint8_t*, uint32_t);

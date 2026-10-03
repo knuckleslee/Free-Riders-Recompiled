@@ -79,7 +79,7 @@ foreach ($file in 'benchmark.ps1', 'benchmark_summary.py', 'profile_summary.py',
     Copy-Into "scripts/$file" | Out-Null
 }
 # The linker map stays: the profile setting names functions with it (profile_summary.py)
-Copy-Into 'out/build/host' @('*.pdb', '*.ilk', '*.obj', 'settings.ini') | Out-Null
+Copy-Into 'out/build/host' @('*.pdb', '*.ilk', '*.obj', 'settings.ini', '*_train.exe') | Out-Null
 # The shader pack and the recorded pipeline lists carry the shader ABI: a kit that keeps
 # an older one translates every shader at the start (and needs the checkout's shader
 # header, which a kit has not) or ignores the lists. So -UpdateOnly brings them along too,

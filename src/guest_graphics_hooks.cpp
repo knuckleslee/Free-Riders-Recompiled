@@ -1,5 +1,6 @@
 #include "ppc_recomp_shared.h"
 #include "diagnostic_hooks.h"
+#include "pgo.h"
 #include "avatar_state.h"
 #include "avatar_transform.h"
 #include "guest_graphics.h"
@@ -574,15 +575,19 @@ SFR_HOOK(sub_824E65A0) {
         }
     // SFR_PRESENT_LIMIT=N ends the run after N presents (debugging aid).
     static const uint32_t limit=[]{ const char* t=std::getenv("SFR_PRESENT_LIMIT"); return t?uint32_t(std::strtoul(t,nullptr,10)):0u; }();
-    if(limit && sfr::present_count>=limit)
+    if(limit && sfr::present_count>=limit) {
+        sfr::write_training_profile();
         throw sfr::RuntimeStop("present-limit",limit,"SFR_PRESENT_LIMIT reached");
+    }
     // SFR_PRESENT_LIMIT_AFTER_SAY=N ends the run N presents after the last
     // SFR_SAY word: with the script stretched to the wall clock the race starts
     // at a present that depends on the PC's speed, so a fixed limit can't be set.
     static const uint32_t after_say=[]{ const char* t=std::getenv("SFR_PRESENT_LIMIT_AFTER_SAY"); return t?uint32_t(std::strtoul(t,nullptr,10)):0u; }();
     const uint32_t said_at=sfr::say_done_present.load();
-    if(after_say && said_at && uint32_t(sfr::present_count.load()-said_at)>=after_say)
+    if(after_say && said_at && uint32_t(sfr::present_count.load()-said_at)>=after_say) {
+        sfr::write_training_profile();
         throw sfr::RuntimeStop("present-limit",after_say,"SFR_PRESENT_LIMIT_AFTER_SAY reached");
+    }
 }
 
 // DrawVerticesUP(device, primitive, vertex count, data, stride). The original

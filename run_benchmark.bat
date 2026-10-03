@@ -6,6 +6,7 @@ rem   run_benchmark.bat exe          two builds, sfr_cpu_diagnostic_a.exe agains
 rem   run_benchmark.bat exe3         three builds, _a, _b and _c (scripts\build_ab.ps1 -Local), in the same rounds
 rem   run_benchmark.bat exe4         four builds, _a to _d (scripts\build_ab.ps1 -Local -Loops)
 rem   run_benchmark.bat exe-loops    _a, _b and _d (scripts\build_ab.ps1 -Loops): d is b with checkpoints only at loops
+rem   run_benchmark.bat pgo          the usual build against the profile-guided _e (scripts\build_pgo.ps1)
 rem   run_benchmark.bat ctrl         a control: the same build twice, to see what the method says about no difference
 rem   run_benchmark.bat rt           the render thread on (the default) against off, the same build
 rem   run_benchmark.bat par          every guest thread in parallel (SFR_PARALLEL_WORKER=all) against the default
@@ -30,6 +31,7 @@ if /i "%MODE%"=="exe" set CONFIGS=exe-a,exe-b
 if /i "%MODE%"=="exe3" set CONFIGS=exe-a,exe-b,exe-c
 if /i "%MODE%"=="exe4" set CONFIGS=exe-a,exe-b,exe-c,exe-d
 if /i "%MODE%"=="exe-loops" set CONFIGS=exe-a,exe-b,exe-d
+if /i "%MODE%"=="pgo" set CONFIGS=baseline,exe-e
 if /i "%MODE%"=="rt" set CONFIGS=baseline,no-render-thread
 rem A run that stops on an error dialog is ended after 10 minutes, not 25
 if /i "%MODE%"=="prof" (

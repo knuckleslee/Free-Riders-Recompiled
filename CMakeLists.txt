@@ -926,6 +926,37 @@ if(SFR_BUILD_DIAGNOSTIC)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|amd64|x86_64")
         target_compile_options(sfr_cpu_diagnostic PRIVATE -march=sandybridge)
     endif()
+    # Profile-guided builds of the game (scripts/build_pgo.ps1): first an
+    # instrumented one that counts which branches and calls a race takes, then
+    # one optimised with those counts (llvm-profdata merges them). Only this
+    # target, the generated code with its hooks, is instrumented.
+    option(SFR_PGO_GENERATE "Instrument sfr_cpu_diagnostic to record a training profile" OFF)
+    set(SFR_PGO_RUNTIME "" CACHE FILEPATH "clang_rt.profile library for an instrumented clang-cl build")
+    set(SFR_PGO_USE "" CACHE FILEPATH "Merged .profdata to optimise sfr_cpu_diagnostic with")
+    if(SFR_PGO_GENERATE AND SFR_PGO_USE)
+        message(FATAL_ERROR "SFR_PGO_GENERATE and SFR_PGO_USE are two different builds.")
+    endif()
+    if(SFR_PGO_GENERATE)
+        target_compile_options(sfr_cpu_diagnostic PRIVATE -fprofile-instr-generate)
+        target_compile_definitions(sfr_cpu_diagnostic PRIVATE SFR_PGO_GENERATE=1)
+        if(MSVC)
+            # link.exe is called directly, not through clang: name the runtime.
+            if(NOT EXISTS "${SFR_PGO_RUNTIME}")
+                message(FATAL_ERROR "SFR_PGO_GENERATE needs SFR_PGO_RUNTIME (clang_rt.profile-x86_64.lib).")
+            endif()
+            target_link_libraries(sfr_cpu_diagnostic PRIVATE "${SFR_PGO_RUNTIME}")
+        else()
+            target_link_options(sfr_cpu_diagnostic PRIVATE -fprofile-instr-generate)
+        endif()
+    elseif(SFR_PGO_USE)
+        if(NOT EXISTS "${SFR_PGO_USE}")
+            message(FATAL_ERROR "SFR_PGO_USE=${SFR_PGO_USE} does not exist.")
+        endif()
+        # Functions the training never ran, or whose code changed since, are
+        # optimised as usual; the counts are only a guide.
+        target_compile_options(sfr_cpu_diagnostic PRIVATE "-fprofile-instr-use=${SFR_PGO_USE}"
+            -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date -Wno-profile-instr-missing)
+    endif()
 endif()
 # D3D12 through the Agility SDK's runtime (scripts/fetch_d3d12_agility.py,
 # run by bootstrap on Windows): every program that draws with D3D12 exports

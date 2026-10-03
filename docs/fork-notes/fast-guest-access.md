@@ -57,3 +57,38 @@ c（兩者）在同一輪比較。三次完整建置，時間約平常的三倍�
 
 `profile_summary.py` 多兩張表：停在哪個 DLL（ntdll＝等待／鎖、d3d12、AMD 驅動……），以及程式裡哪兩層呼叫它。
 不展開系統 DLL 內部的堆疊，所以 ntdll 裡的等待要靠呼叫者分辨是等事件、等許可還是驅動程式。
+
+## 依實際執行資料最佳化（PGO，`scripts/build_pgo.ps1`）
+
+剖析很平（生成碼最熱的函式只佔 2.5%），逐一改函式效益低，正好適合讓編譯器整體依實際執行調整：分支排列、
+內嵌哪些呼叫、冷熱程式碼分開。clang-cl 的做法：
+
+1. 帶計數的建置（`-fprofile-instr-generate`，連結 LLVM 附的 `clang_rt.profile` 函式庫），建在 `out\build\pgo-train`，
+   複製成 `sfr_cpu_diagnostic_train.exe`。
+2. 用量測腳本的比賽跑 `-TrainRuns` 次（預設 2），每次寫 `out\pgo\sfr-<pid>.profraw`。量測靠
+   `SFR_PRESENT_LIMIT_AFTER_SAY` 拋例外結束，結束時若卡住會被強制停止，所以在到達上限時先寫一次（`src/pgo.h`），
+   正常結束時再寫完整的。
+3. `llvm-profdata merge` 合成 `out\pgo\sfr.profdata`。
+4. 用它建置（`-fprofile-instr-use`），建在 `out\build\pgo-use`，複製成 `sfr_cpu_diagnostic_e.exe`，並寫 `pgo.txt`。
+
+`out\build\host` 的建置不動。只有遊戲本體（生成碼與 hook）帶計數或用計數，繪圖等函式庫照舊。
+`run_benchmark.bat pgo` 比較一般版與 e。計數屬於訓練時的原始碼：`-DiagnosticDirectory` 訓練與建置必須相同；
+預設是原樣的生成碼，所以 e 對 a 只差 PGO。
+
+在 Linux 上用小程式驗證過整個流程（產生、合併、使用，並確認到達上限時的寫入與結束時的寫入落在同一個檔案）；
+clang-cl 接受這兩個旗標。**遊戲本身尚未建置或執行過。**
+
+## 函式入口
+
+每個函式入口原本都存兩個執行緒區域變數：名稱和位址。
+
+- **位址不能省**：兩個經過稽核的 hook 依它判斷（`call_indirect` 的使用者重設、`VdGlobalDevice` 的讀取只允許在
+  0x824F19E8 裡）。
+- **名稱只用在訊息**：快速路徑不再存名稱；觀察路徑照存，連同它屬於的位址（`named_address`）。印訊息時名稱若已
+  不是最新的，就用 `sub_XXXXXXXX`。
+- **工作執行緒的入口**：與許可並行的客體（`cores` 模式的各核心工作執行緒、`all` 模式的幾乎所有執行緒）原本每個
+  入口都走非內嵌的 `enter_function_observed`，但在已脫離許可、沒被監看、進入的不是 hook 時，它其實只會
+  「檢查點、記位址、返回」。現在這種情況直接內嵌處理；判斷用快取在 `GuestEntryState::permit_detached` 的許可
+  脫離旗標（只有該執行緒自己會改它）。hook、已附回許可、被監看或沒有旗標時，照舊走完整路徑。
+- 測試：`guest_entry_state_test` 的 `parallel_entries_stay_inline`，涵蓋上述五種情況；拿掉三個條件中的任一個，
+  測試都會失敗。
