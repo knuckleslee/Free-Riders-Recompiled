@@ -415,6 +415,63 @@ float4 shaderMain(float4 position : SV_Position, float4 colour : TEXCOORD0) : SV
             std::cerr << "DEFERRED_REPACK passed\n";
         }
     }
+    // index_cache: indices unchanged for a frame are kept in a buffer of their
+    // own, a store to them drops it, and a draw binds it in place of the ring.
+    {
+        sfr::GuestMemory memory;
+        constexpr uint32_t physical = 0x100000, address = 0xA0100000;
+        memory.map(address, 0x10000);
+        sfr::NativePresentation presentation(graphics, 16, 16);
+        sfr::NativeRenderer renderer(graphics, presentation);
+        const auto look = [&](uint32_t at = physical) { return renderer.index_cache(memory, at, 3, false, false); };
+        auto first = look();
+        require(!first.buffer && !first.entry, "a new index range is only watched");
+        require(!look().entry, "a range seen this frame is not kept yet");
+        (void)look(physical + 0x100);
+        memory.advance_write_epoch();
+        auto eligible = look();
+        require(!eligible.buffer && eligible.entry, "a range unwritten for a frame may be kept");
+        const auto fill = renderer.fill_index_cache(eligible.entry, 3, 0, 2);
+        require(fill.size() == 3, "the kept buffer holds every index");
+        fill[0] = 0; fill[1] = 1; fill[2] = 2;
+        // A second range whose triangle is degenerate: drawn from its buffer,
+        // it covers nothing (an unindexed draw would cover everything).
+        const auto empty_fill = renderer.fill_index_cache(look(physical + 0x100).entry, 3, 0, 0);
+        require(empty_fill.size() == 3, "a second range is kept on its own");
+        empty_fill[0] = empty_fill[1] = empty_fill[2] = 0;
+        const auto hit = look();
+        require(hit.buffer && hit.lowest == 0 && hit.highest == 2, "a kept range answers with its buffer and bounds");
+        const auto empty = look(physical + 0x100);
+        require(empty.buffer && empty.buffer != hit.buffer, "each range has its own buffer");
+        sfr::NativeDraw draw;
+        draw.vertex_count = 3; draw.stride = 4;
+        const std::array<uint8_t, 12> vertices{};
+        draw.vertices = vertices; draw.vertex_shader = vertex.get(); draw.pixel_shader = pixel.get();
+        draw.index_buffer = hit.buffer; draw.index_count = 3;
+        draw.vertex_constants.back() = std::bit_cast<uint32_t>(0.75f);
+        draw.pixel_constants.front() = std::bit_cast<uint32_t>(0.25f);
+        sfr::NativeClear clear{};
+        clear.color = true;
+        presentation.clear(clear);
+        presentation.set_raster_state({0,0,16,16}, {0,0,8,16});
+        renderer.draw(draw);
+        draw.index_buffer = empty.buffer;
+        presentation.set_raster_state({0,0,16,16}, {8,0,16,16});
+        renderer.draw(draw);
+        const auto pixels = presentation.readback_color();
+        for (uint32_t y=0; y<16; ++y) for (uint32_t x=0; x<16; ++x) {
+            const size_t at = (y*16+x)*4;
+            if (x < 8)
+                require(std::abs(int(pixels[at+2])-191)<=1 && std::abs(int(pixels[at+1])-64)<=1,
+                        "an indexed draw reads its indices from the kept buffer");
+            else
+                require(pixels[at+2] <= 1 && pixels[at+1] <= 1, "each draw binds its own kept index buffer");
+        }
+        memory.store<uint16_t>(address + 2, 7);
+        const auto dropped = look();
+        require(!dropped.buffer && !dropped.entry, "a store to the indices drops the kept buffer");
+        std::cerr << "INDEX_CACHE passed\n";
+    }
 }
 // Preserve depth/stencil across color-only work before attempting to remove
 // unused attachments from those draws. This is also an oracle for alternating

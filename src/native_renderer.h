@@ -59,6 +59,10 @@ struct NativeDraw {
     // time: the gather is by far a race frame's largest cost. Empty for an
     // unindexed draw.
     std::span<const uint32_t> indices;
+    // Or a buffer holding index_count 32-bit indices already (index_cache);
+    // indices is then empty.
+    const plume::RenderBuffer* index_buffer = nullptr;
+    uint32_t index_count = 0;
     // Added to every index, so the block can start anywhere in the stream.
     int32_t base_vertex_location = 0;
     std::vector<plume::RenderInputElement> elements;
@@ -169,6 +173,21 @@ public:
     // repack elements widen the vertices).
     CachedVertices vertex_cache(GuestMemory& memory, uint32_t physical, uint64_t bytes, uint64_t host_bytes,
                                 uint64_t layout);
+    // Index buffers that stay the same from frame to frame, kept like
+    // vertex_cache's (Unleashed Recompiled uploads a buffer once, at Unlock):
+    // count indices at a physical address (wide: four bytes each), decoded
+    // with no base vertex. A hit gives the buffer of 32-bit host indices and
+    // their lowest and highest; otherwise, when entry is set, the caller may
+    // decode them and fill_index_cache() keeps them from now on.
+    struct CachedIndices {
+        const plume::RenderBuffer* buffer = nullptr;
+        uint32_t lowest = 0, highest = 0;
+        void* entry = nullptr;
+    };
+    CachedIndices index_cache(GuestMemory& memory, uint32_t physical, uint32_t count, bool wide, bool restart_enabled);
+    // A buffer for the entry index_cache gave (write only; empty when there
+    // is no room), with the lowest and highest of what will be written.
+    std::span<uint32_t> fill_index_cache(void* entry, uint32_t count, uint32_t lowest, uint32_t highest);
     uint32_t draws() const noexcept;
     // Pipelines created since the last call, and the milliseconds spent
     // creating them: a draw that meets a state combination for the first time

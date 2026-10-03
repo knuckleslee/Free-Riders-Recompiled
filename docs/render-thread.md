@@ -94,3 +94,17 @@ stays zero, so the title may rewrite a vertex buffer as soon as the draw
 returns. It follows `SFR_DEFERRED_CONSTANTS` (a staged draw); `no-deferred-draws`
 keeps it. Covered by the deferred-repack case of
 `native_resolution_render_thread` and `native_formats`.
+
+## Index cache
+
+Unleashed Recompiled uploads a vertex or index buffer once, when the title
+unlocks it. Vertices here already have `SFR_VERTEX_CACHE`; indices now follow
+the same rule (`NativeRenderer::index_cache`): a range of indices unwritten for
+a frame is decoded once, without the base vertex, into a buffer of 32-bit
+indices with its lowest and highest, and later draws bind that buffer
+(`NativeDraw::index_buffer`) with the base vertex location instead of decoding
+and copying the indices again. Stores to the range drop the buffer (write
+epochs); strips cut by restart and scattered indices are decoded every time.
+`SFR_INDEX_CACHE=0` turns it off; it is on only with `SFR_VERTEX_CACHE`.
+Present lines count `cached_index_draws`. Covered by the index-cache case of
+`native_resolution`; not yet measured in a race.
