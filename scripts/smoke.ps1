@@ -7,9 +7,14 @@
 # reserved, every guest thread in parallel (with and without the main core, and
 # the stress setting) and the profile. scripts\smoke_check.py then says for each
 # whether it ended normally, reached and drew the race, and left the marks of
-# its feature, in smoke.md: send that file. About 10 to 15 runs of a few minutes.
+# its feature, in smoke.md: send that file. About 10 to 12 runs of 4 to 5 minutes.
+#
+# Each race is as long as the benchmark's (-AfterSay 4200 presents after the last
+# word): the game counts some 25 s of start line and countdown as racing, and a
+# limit in presents lasts fewer seconds the faster a setting draws them, so 900
+# (the first smoke run) ended every race inside that scene, all mode within 5 s.
 param(
-    [ValidateRange(300, 100000)][int]$AfterSay = 900,
+    [ValidateRange(300, 100000)][int]$AfterSay = 4200,
     [string]$ImageDirectory = '',
     [string]$AssetDirectory = ''
 )

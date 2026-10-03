@@ -25,6 +25,11 @@ PRESENT = re.compile(r'^NATIVE_PRESENT ')
 FIELD = re.compile(r'\b([a-z_0-9]+)=([^\s]+)')
 STOP = re.compile(r'^STOP (\S+)')
 MIN_RACE_FRAMES = 300
+# The game counts the start-line scene and the countdown as racing: about 25 s of
+# light frames (some hundred draws) before the race proper (several hundred, at a
+# third of the frame rate on the i5). A run must go well past it to test anything.
+INTRO_SECONDS = 30
+MIN_RACE_SECONDS = 45
 
 # Lines a setting's feature leaves in the log when it is in effect: (what, pattern, minimum count).
 MARKS = {
@@ -39,9 +44,10 @@ MARKS = {
 
 
 def check_log(path, config):
-    """{'ended', 'race_frames', 'draws', 'cached', 'fps', 'marks', 'problems'} for one run."""
+    """{'ended', 'race_frames', 'race_seconds', 'draws', 'cached', 'fps', 'marks', 'problems'} for one run;
+    draws and fps are of the race proper, from INTRO_SECONDS on (None when it was not reached)."""
     ended, race_frames, draws, cached, has_cached, hangs = None, 0, 0, 0, False, 0
-    seconds, counts = [], {what: 0 for what, _, _ in MARKS.get(config, [])}
+    seconds, frame_draws, counts = [], [], {what: 0 for what, _, _ in MARKS.get(config, [])}
     with open(path, encoding='utf-8', errors='replace') as log:
         for line in log:
             stop = STOP.match(line)
@@ -68,6 +74,7 @@ def check_log(path, config):
                 cached += int(fields['cached_index_draws'] or 0)
             try:
                 seconds.append(float(fields['seconds']))
+                frame_draws.append(int(fields.get('draws', 0) or 0))
             except (KeyError, ValueError):
                 pass
     problems = []
@@ -75,6 +82,10 @@ def check_log(path, config):
         problems.append(f'結束方式：{ended or "沒有 STOP（被強制結束或當掉）"}')
     if hangs:
         problems.append(f'卡住報告 {hangs} 次（畫面停住超過 SFR_HANG_SECONDS）')
+    race_seconds = seconds[-1] - seconds[0] if len(seconds) > 1 else 0.0
+    proper = [i for i, t in enumerate(seconds) if t - seconds[0] >= INTRO_SECONDS]
+    if race_seconds < MIN_RACE_SECONDS:
+        problems.append(f'比賽只跑了 {race_seconds:.0f} 秒，沒有進入正式比賽（開場與倒數約 25 秒）')
     if race_frames < MIN_RACE_FRAMES:
         problems.append(f'比賽畫面只有 {race_frames} 格')
     if race_frames and draws == 0:
@@ -84,8 +95,11 @@ def check_log(path, config):
     for what, _, minimum in MARKS.get(config, []):
         if counts[what] < minimum:
             problems.append(f'沒看到「{what}」的記錄')
-    fps = (len(seconds) - 1) / (seconds[-1] - seconds[0]) if len(seconds) > 1 and seconds[-1] > seconds[0] else None
-    return {'ended': ended, 'race_frames': race_frames, 'draws': draws / race_frames if race_frames else 0,
+    fps = proper_draws = None
+    if len(proper) > 1 and seconds[proper[-1]] > seconds[proper[0]]:
+        fps = (len(proper) - 1) / (seconds[proper[-1]] - seconds[proper[0]])
+        proper_draws = sum(frame_draws[i] for i in proper) / len(proper)
+    return {'ended': ended, 'race_frames': race_frames, 'race_seconds': race_seconds, 'draws': proper_draws,
             'cached': cached if has_cached else None, 'fps': fps, 'marks': counts, 'problems': problems}
 
 
@@ -101,12 +115,14 @@ def report(directory):
     rows = [(config, log.name, check_log(log, config)) for config, log in runs(directory)]
     lines = ['# 功能檢查（每個設定一趟短比賽）', '',
              '幀率只是確認有在跑，一趟短比賽不能拿來比較快慢。', '',
-             '| 設定 | 結果 | 比賽格數 | 每格繪製 | 索引快取命中 | 幀率 | 功能記錄 | 問題 |',
-             '| --- | --- | ---: | ---: | ---: | ---: | --- | --- |']
+             f'「正式比賽」指開場與倒數之後（比賽開始 {INTRO_SECONDS} 秒起）。', '',
+             '| 設定 | 結果 | 比賽秒數 | 比賽格數 | 正式比賽每格繪製 | 索引快取命中 | 正式比賽幀率 | 功能記錄 | 問題 |',
+             '| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |']
     for config, _, result in rows:
         marks = '、'.join(f'{what} {count}' for what, count in result['marks'].items()) or '—'
-        lines.append('| {} | {} | {} | {:.0f} | {} | {} | {} | {} |'.format(
-            config, '正常' if not result['problems'] else '**有問題**', result['race_frames'], result['draws'],
+        lines.append('| {} | {} | {:.0f} | {} | {} | {} | {} | {} | {} |'.format(
+            config, '正常' if not result['problems'] else '**有問題**', result['race_seconds'], result['race_frames'],
+            '—' if result['draws'] is None else f"{result['draws']:.0f}",
             '—' if result['cached'] is None else result['cached'],
             '—' if result['fps'] is None else f"{result['fps']:.1f}", marks, '；'.join(result['problems']) or '—'))
     failed = [config for config, _, result in rows if result['problems']]
