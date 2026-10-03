@@ -607,6 +607,7 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
     // these three are the only fields a draw may leave alone.
     static thread_local sfr::NativeDraw draw;
     draw.elements.clear();
+    draw.deferred_repack=false;
     draw.palette={};
     draw.shared={};
     draw.cull=plume::RenderCullMode::NONE;
@@ -752,6 +753,25 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
         draw.stride=wide;
         ++frame_cached_draws;
     } else {
+    // With a render thread, a DEC3N draw that fills the ring is only copied
+    // here as the guest holds it; the render thread swaps and repacks it
+    // straight into the ring (NativeRenderer::defer_repack). The draw's
+    // constants are then staged as well (below).
+    std::span<uint8_t> raw;
+    if(!dec3n_offsets.empty() && cached.fill.empty() && !graphics().renderer().constant_staging().empty())
+        raw=graphics().renderer().defer_repack(count,stride,wide,dec3n_offsets);
+    draw.deferred_repack=!raw.empty();
+    if(draw.deferred_repack) {
+        const auto repack_start=metrics_clock();
+        std::memcpy(raw.data(),vertices.data(),vertices.size());
+        // Only its size is read (NativeDraw::deferred_repack).
+        draw.vertices={raw.data(),size_t(count)*wide};
+        draw.stride=wide;
+        if(frame_metrics) {
+            frame_vertex_repack_bytes+=size_t(count)*wide;
+            frame_vertex_repack_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-repack_start).count();
+        }
+    } else {
     // The vertices in host byte order. Unless an element needs repacking they
     // are swapped straight into the renderer's upload ring (or the cached
     // buffer being filled): copying them into scratch, swapping them there and
@@ -772,41 +792,19 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
     }
     if(!dec3n_offsets.empty()) {
         // Repacked straight into the upload ring (or the cached buffer) when
-        // it has room (write only: both are write-combined, and the loop
-        // below only writes them).
+        // it has room (write only: both are write-combined).
         std::span<uint8_t> repacked=cached.fill.empty()
             ? graphics().renderer().vertex_space(uint64_t(count)*wide,indices.size()*4) : cached.fill;
         if(repacked.size()!=size_t(count)*wide) repacked=byte_scratch(size_t(count)*wide,1);
         const auto repack_start=metrics_clock();
-        // Each component is one of 1024 values, so its SNORM16 form is looked
-        // up: rounding it per vertex was a tenth of a race frame's main
-        // thread (docs/performance.md).
-        static const std::array<int16_t,1024> snorm16=[] {
-            std::array<int16_t,1024> table{};
-            for(uint32_t bits=0;bits<1024;++bits) {
-                const int32_t value=int32_t(bits<<22)>>22;  // sign-extended 10 bits
-                const float unit=(std::max)(float(value)/511.0f,-1.0f);
-                table[bits]=int16_t(std::lround(unit*32767.0f));
-            }
-            return table;
-        }();
-        for(uint32_t v=0;v<count;++v) {
-            const uint8_t* from=draw.vertices.data()+size_t(v)*stride;
-            uint8_t* to=repacked.data()+size_t(v)*wide;
-            std::memcpy(to,from,stride);
-            for(size_t j=0;j<dec3n_offsets.size();++j) {
-                uint32_t word;
-                std::memcpy(&word,from+dec3n_offsets[j],4);  // host order after swap_words
-                const int16_t out[4]={snorm16[word&1023],snorm16[(word>>10)&1023],snorm16[(word>>20)&1023],32767};
-                std::memcpy(to+stride+8*j,out,8);
-            }
-        }
+        sfr::repack_dec3n(repacked,draw.vertices.data(),count,stride,wide,dec3n_offsets);
         draw.vertices=repacked;
         draw.stride=wide;
         if(frame_metrics) {
             frame_vertex_repack_bytes+=repacked.size();
             frame_vertex_repack_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-repack_start).count();
         }
+    }
     }
     }
     if(!layout || verify_layout)

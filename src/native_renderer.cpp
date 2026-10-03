@@ -316,10 +316,24 @@ struct NativeRenderer::Impl {
         SharedConstants shared;
         std::array<int32_t, 64> loop_constants;
     };
+    struct DeferredRepack {
+        const uint8_t* raw;
+        uint32_t count, stride, wide, offset_count;
+        uint32_t offsets[16];
+        uint64_t arena_end;  // arena_produced after this copy
+    };
     struct StagedSlot {
         std::array<uint32_t, staged_words> constants;
         DeferredDraw draw;
+        DeferredRepack repack;
+        bool repack_active;
     };
+    // Raw vertex copies for deferred repacks, handed out in order and released
+    // (arena_consumed) by the render thread.
+    static constexpr uint64_t arena_bytes = 64ull << 20;
+    std::vector<uint8_t> arena;
+    uint64_t arena_produced = 0;
+    std::atomic<uint64_t> arena_consumed{0};
     std::vector<StagedSlot> staged;
     StagedSlot& staged_slot() { return staged[staged_produced % staged_slots]; }
     // pipelines, recipe_pipelines, recipes and their counters: resolved on the
@@ -712,6 +726,32 @@ NativeRenderer::~NativeRenderer() {
     impl_->save_manifest();
 }
 uint32_t NativeRenderer::draws() const noexcept { return impl_->draws; }
+
+std::span<uint8_t> NativeRenderer::defer_repack(uint32_t count, uint32_t stride, uint32_t wide,
+                                               std::span<const uint32_t> offsets) {
+    const uint64_t bytes = uint64_t(count) * stride;
+    if (impl_->staged.empty() || offsets.size() > 16 || bytes > Impl::arena_bytes / 4) return {};
+    if (impl_->arena.empty()) impl_->arena.resize(Impl::arena_bytes);
+    // A copy never wraps: it starts at the arena's beginning instead.
+    uint64_t start = impl_->arena_produced;
+    if (start % Impl::arena_bytes + bytes > Impl::arena_bytes) start += Impl::arena_bytes - start % Impl::arena_bytes;
+    if (start + bytes - impl_->arena_consumed.load(std::memory_order_acquire) > Impl::arena_bytes) {
+        // Everything still waits for the render thread: flush empties the queue.
+        impl_->presentation.flush();
+        impl_->arena_consumed.store(impl_->arena_produced, std::memory_order_relaxed);
+        impl_->staged_consumed.store(impl_->staged_produced, std::memory_order_relaxed);
+    }
+    impl_->arena_produced = start + bytes;
+    auto& repack = impl_->staged_slot().repack;
+    repack.raw = impl_->arena.data() + start % Impl::arena_bytes;
+    repack.count = count;
+    repack.stride = stride;
+    repack.wide = wide;
+    repack.offset_count = uint32_t(offsets.size());
+    std::copy(offsets.begin(), offsets.end(), repack.offsets);
+    repack.arena_end = impl_->arena_produced;
+    return {impl_->arena.data() + start % Impl::arena_bytes, size_t(bytes)};
+}
 
 std::span<uint32_t> NativeRenderer::constant_staging() {
     static const bool deferred = [] {
@@ -1257,6 +1297,9 @@ void NativeRenderer::draw(const NativeDraw& draw) {
         const char* text = std::getenv("SFR_DEFERRED_DRAWS");
         return !text || *text != '0';
     }();
+    // A deferred repack is only ever handed out with staged constants; it needs
+    // the render thread whatever SFR_DEFERRED_DRAWS says about the rest.
+    if (draw.deferred_repack && !draw.staged_constants) unsupported(0, "a deferred repack without staged constants");
     const bool deferred = defer_draws && draw.staged_constants && draw.elements.size() <= Impl::deferred_elements;
     plume::RenderPipeline* const pipeline = deferred ? nullptr : impl_->resolve_pipeline(draw);
     // Per-draw upload: vertices, then the three constant buffers (256-aligned).
@@ -1279,7 +1322,7 @@ void NativeRenderer::draw(const NativeDraw& draw) {
     impl_->ring_offset = align(base_offset + total, 256);
     auto* upload = impl_->rings[impl_->ring_index].get();
     uint8_t* mapped = impl_->rings_mapped[impl_->ring_index] + base_offset;
-    if (!in_place) std::memcpy(mapped, draw.vertices.data(), vertex_bytes);
+    if (!in_place && !draw.deferred_repack) std::memcpy(mapped, draw.vertices.data(), vertex_bytes);
     if (auto* probe = impl_->constant_reuse_probe.get()) {
         const std::array<const std::array<uint32_t, 1024>*, 2> stages{
             &draw.vertex_constants, &draw.pixel_constants};
@@ -1300,6 +1343,9 @@ void NativeRenderer::draw(const NativeDraw& draw) {
         if (impl_->staged.empty() || draw.staged_constants != impl_->staged_slot().constants.data())
             unsupported(0, "staged constants are not the slot constant_staging gave");
         staged = &impl_->staged_slot();
+        staged->repack_active = draw.deferred_repack;
+        if (draw.deferred_repack && (draw.vertex_buffer || staged->repack.count * staged->repack.wide != vertex_bytes))
+            unsupported(0, "a deferred repack whose size is not the draw's vertices");
         ++impl_->staged_produced;
     } else if (auto* constants = impl_->constant_uploads.get()) {
         // A hit references an immutable slot from this same ring lifetime.
@@ -1388,6 +1434,15 @@ void NativeRenderer::draw(const NativeDraw& draw) {
                                       palette_rel, loop_rel, index_rel, shared_offset, staged,
                                       staged_into](plume::RenderCommandList& list, uint64_t generation) {
         plume::RenderPipeline* bound = pipeline;
+        if (staged && staged->repack_active) {
+            // The vertices go first in the draw's ring block (base_offset).
+            auto& repack = staged->repack;
+            uint8_t* const raw = const_cast<uint8_t*>(repack.raw);
+            swap_words({raw, size_t(repack.count) * repack.stride});
+            repack_dec3n({mapped, size_t(repack.count) * repack.wide}, raw, repack.count, repack.stride, repack.wide,
+                         {repack.offsets, repack.offset_count});
+            impl->arena_consumed.store(repack.arena_end, std::memory_order_release);
+        }
         if (staged) {
             swap_words_into({staged_into, Impl::staged_words * 4},
                             {reinterpret_cast<const uint8_t*>(staged->constants.data()), Impl::staged_words * 4});

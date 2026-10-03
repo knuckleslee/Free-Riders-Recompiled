@@ -1,5 +1,6 @@
 #include "native_formats.h"
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <set>
 #include <stdexcept>
@@ -11,6 +12,21 @@ static void require(bool value, const char* message) {
 
 int main() {
     try {
+        // DEC3N repack: x 511, y 0, z -512 (clamped to -1) become SNORM16
+        // 32767, 0, -32767 and w 32767, appended after the original vertex.
+        {
+            const uint32_t word = 511u | (0u << 10) | (0x200u << 20);
+            std::vector<uint8_t> vertex(8, 0xAB);
+            std::memcpy(vertex.data() + 4, &word, 4);  // host order, at offset 4
+            std::vector<uint8_t> out(16, 0);
+            const uint32_t offsets[] = {4};
+            sfr::repack_dec3n(out, vertex.data(), 1, 8, 16, offsets);
+            require(std::equal(vertex.begin(), vertex.end(), out.begin()), "repack keeps the original vertex");
+            int16_t components[4];
+            std::memcpy(components, out.data() + 8, 8);
+            require(components[0] == 32767 && components[1] == 0 && components[2] == -32767 && components[3] == 32767,
+                    "repack appends each DEC3N element as four SNORM16 components");
+        }
         // Word swapping, over lengths that exercise the sixteen-byte steps,
         // the four-byte tail, and a trailing partial word left alone.
         for (const size_t length : {0u, 3u, 4u, 15u, 16u, 20u, 33u, 64u, 70u}) {

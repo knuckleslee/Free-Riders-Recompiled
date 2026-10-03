@@ -81,6 +81,10 @@ struct NativeDraw {
     // thread neither swaps nor writes them to write-combined memory. The two
     // arrays below are then not read.
     const uint32_t* staged_constants = nullptr;
+    // Set by defer_repack(): the vertices are DEC3N-repacked by the render
+    // thread from the raw copy it was given, straight into the ring. vertices
+    // then only gives their repacked size and is not read.
+    bool deferred_repack = false;
     std::array<uint32_t, 1024> vertex_constants{};  // 256 float4
     std::array<uint32_t, 1024> pixel_constants{};
     // Vertex loop constants i0..i15, unpacked to int4 (see loop_constants.h).
@@ -131,6 +135,13 @@ public:
     // the calling thread: no render thread, a constant reuse experiment, or
     // SFR_DEFERRED_CONSTANTS=0. Valid until that draw() returns.
     std::span<uint32_t> constant_staging();
+    // For the draw after constant_staging() gave a slot: room for count
+    // vertices of stride bytes as the guest holds them (big-endian), which
+    // the render thread swaps and DEC3N-repacks (repack_dec3n) into the
+    // ring. Set NativeDraw::deferred_repack and stage that draw's constants.
+    // Empty when it cannot be deferred (the caller repacks it itself).
+    std::span<uint8_t> defer_repack(uint32_t count, uint32_t stride, uint32_t wide,
+                                    std::span<const uint32_t> offsets);
     // Called once at initial device setup, before the title's first frame.
     // Compiles known recipes while the presentation thread remains responsive.
     void prepare_pipelines();

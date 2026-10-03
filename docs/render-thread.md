@@ -83,3 +83,14 @@ the guest's thread. `SFR_DEFERRED_DRAWS=0` keeps pipeline resolution on the
 guest's thread with the constants still staged. Covered by
 `native_resolution_render_thread` (a draw with another pipeline between
 others) and `native_resolution_staged_constants`; not yet measured in a race.
+
+## Deferred DEC3N repacks
+
+A draw with DEC3N elements that fills the ring (not the vertex cache) is
+copied as the guest holds it into an arena (`NativeRenderer::defer_repack`);
+the render thread swaps it and repacks it (`repack_dec3n`) into the draw's
+ring block. The copy is made on the guest's thread because the device's fence
+stays zero, so the title may rewrite a vertex buffer as soon as the draw
+returns. It follows `SFR_DEFERRED_CONSTANTS` (a staged draw); `no-deferred-draws`
+keeps it. Covered by the deferred-repack case of
+`native_resolution_render_thread` and `native_formats`.

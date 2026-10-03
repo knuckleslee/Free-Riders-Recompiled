@@ -38,6 +38,12 @@ void swap_words(std::span<uint8_t> bytes);
 // copy and an in-place swap took two. The destination may be write-combined
 // (the renderer's upload ring); it is only written.
 void swap_words_into(std::span<uint8_t> to, std::span<const uint8_t> from);
+// DEC3N (signed normalized 10:10:10) has no D3D12 format: each such element,
+// at the given offsets of a host-order vertex of stride bytes, is appended to
+// the vertex as four SNORM16 components (wide = stride + 8 per element). to
+// may be write-combined; it is only written.
+void repack_dec3n(std::span<uint8_t> to, const uint8_t* from, uint32_t count, uint32_t stride, uint32_t wide,
+                  std::span<const uint32_t> offsets);
 // Decodes count big-endian indices (two or four bytes each) into out as
 // base + index. A primitive-restart index (all ones, when restart is on)
 // is written as it is and left out of lowest/highest, which cover the

@@ -379,6 +379,40 @@ float4 shaderMain(float4 position : SV_Position, float red : TEXCOORD0) : SV_Tar
                 require(std::abs(int(wrapped[at+2])-64)<=1 && std::abs(int(wrapped[at+1])-128)<=1,
                         "staging slots wrap without handing out one still in use");
             std::cerr << "STAGED_CONSTANTS passed\n";
+            // A deferred DEC3N repack: the raw big-endian vertices go to the
+            // render thread, which swaps and repacks them into the ring.
+            const auto repacked_vertex = compile(graphics, directory, header, R"(
+struct Output { float4 position : SV_Position; float4 colour : TEXCOORD0; };
+Output shaderMain(uint id : SV_VertexID, [[vk::location(0)]] float4 normal : NORMAL0) {
+ float2 p[3] = {float2(-1,-1), float2(-1,3), float2(3,-1)};
+ Output o; o.position = float4(p[id],0.5,1); o.colour = float4(normal.xyz*0.5+0.5,1);
+ return o;
+})", true);
+            const auto repacked_pixel = compile(graphics, directory, header, R"(
+float4 shaderMain(float4 position : SV_Position, float4 colour : TEXCOORD0) : SV_Target { return colour; })", false);
+            sfr::NativeDraw normals;
+            normals.vertex_count = 3;
+            normals.vertex_shader = repacked_vertex.get();
+            normals.pixel_shader = repacked_pixel.get();
+            normals.elements.emplace_back("NORMAL", 0, 0, plume::RenderFormat::R16G16B16A16_SNORM, 0, 4);
+            const auto staging = renderer.constant_staging();
+            std::fill(staging.begin(), staging.end(), 0u);
+            normals.staged_constants = staging.data();
+            const uint32_t offsets[] = {0};
+            const auto raw = renderer.defer_repack(3, 4, 12, offsets);
+            require(raw.size() == 12, "a DEC3N draw is deferred whenever constants are staged");
+            const uint32_t word = __builtin_bswap32(511u | (0u << 10) | (0x200u << 20));  // as the guest holds it
+            for (int v = 0; v < 3; ++v) std::memcpy(raw.data() + 4 * v, &word, 4);
+            normals.deferred_repack = true;
+            normals.vertices = {raw.data(), 36};
+            normals.stride = 12;
+            presentation.set_raster_state({0,0,16,16}, {0,0,16,16});
+            renderer.draw(normals);
+            const auto coloured = presentation.readback_color();
+            for (size_t at=0; at<coloured.size(); at+=4)  // BGRA: x 1 -> 255, y 0 -> 128, z -1 -> 0
+                require(coloured[at+2] >= 254 && std::abs(int(coloured[at+1])-128) <= 1 && coloured[at] <= 1,
+                        "the render thread swaps and repacks deferred DEC3N vertices into the ring");
+            std::cerr << "DEFERRED_REPACK passed\n";
         }
     }
 }

@@ -1,6 +1,8 @@
 #include "native_formats.h"
 #include <algorithm>
+#include <array>
 #include <bit>
+#include <cmath>
 #include <cstring>
 #include <utility>
 #if defined(_M_X64) || defined(__x86_64__)
@@ -70,6 +72,34 @@ uint32_t format_component_bytes(RenderFormat format) {
         return 2;
     default:
         return 1;
+    }
+}
+
+void repack_dec3n(std::span<uint8_t> to, const uint8_t* from, uint32_t count, uint32_t stride, uint32_t wide,
+                  std::span<const uint32_t> offsets) {
+    // Each component is one of 1024 values, so its SNORM16 form is looked
+    // up: rounding it per vertex was a tenth of a race frame's main thread
+    // (docs/performance.md).
+    static const std::array<int16_t, 1024> snorm16 = [] {
+        std::array<int16_t, 1024> table{};
+        for (uint32_t bits = 0; bits < 1024; ++bits) {
+            const int32_t value = int32_t(bits << 22) >> 22;  // sign-extended 10 bits
+            const float unit = (std::max)(float(value) / 511.0f, -1.0f);
+            table[bits] = int16_t(std::lround(unit * 32767.0f));
+        }
+        return table;
+    }();
+    for (uint32_t v = 0; v < count; ++v) {
+        const uint8_t* const vertex = from + size_t(v) * stride;
+        uint8_t* const out = to.data() + size_t(v) * wide;
+        std::memcpy(out, vertex, stride);
+        for (size_t j = 0; j < offsets.size(); ++j) {
+            uint32_t word;
+            std::memcpy(&word, vertex + offsets[j], 4);  // host order after swap_words
+            const int16_t components[4] = {snorm16[word & 1023], snorm16[(word >> 10) & 1023],
+                                           snorm16[(word >> 20) & 1023], 32767};
+            std::memcpy(out + stride + 8 * j, components, 8);
+        }
     }
 }
 
