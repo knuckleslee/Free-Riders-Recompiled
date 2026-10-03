@@ -140,6 +140,12 @@ $settings = @{
     'exe-c'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_c.exe' }   # a third build (scripts/build_ab.ps1 -Local)
     'exe-d'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_d.exe' }   # checkpoints only at loops (scripts/build_ab.ps1 -Loops)
     'exe-e'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_e.exe' }   # profile-guided (scripts/build_pgo.ps1)
+    # the same builds with every guest thread in parallel, the mode most likely to become the default
+    'exe-a-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_a.exe'; SFR_PARALLEL_WORKER = 'all' }
+    'exe-b-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe'; SFR_PARALLEL_WORKER = 'all' }
+    'exe-c-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_c.exe'; SFR_PARALLEL_WORKER = 'all' }
+    'exe-d-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_d.exe'; SFR_PARALLEL_WORKER = 'all' }
+    'exe-e-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_e.exe'; SFR_PARALLEL_WORKER = 'all' }
     'pgo-train'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_train.exe' }   # its training runs, started by scripts/build_pgo.ps1
     # the same file as exe-b under another name: a control that shows what comparing a program with itself gives
     'exe-b-again'  = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }

@@ -13,19 +13,29 @@
 # word): the game counts some 25 s of start line and countdown as racing, and a
 # limit in presents lasts fewer seconds the faster a setting draws them, so 900
 # (the first smoke run) ended every race inside that scene, all mode within 5 s.
+#
+# -AllOnly runs only the builds in all mode (exe-a-all ... exe-e-all), for when the
+# rest already passed.
 param(
     [ValidateRange(300, 100000)][int]$AfterSay = 4200,
+    [switch]$AllOnly,
     [string]$ImageDirectory = '',
     [string]$AssetDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $host_dir = Join-Path $root 'out/build/host'
-$configs = @('baseline')
-foreach ($letter in 'a', 'b', 'c', 'd', 'e') {
-    if (Test-Path -LiteralPath (Join-Path $host_dir "sfr_cpu_diagnostic_$letter.exe")) { $configs += "exe-$letter" }
+$builds = @(foreach ($letter in 'a', 'b', 'c', 'd', 'e') {
+    if (Test-Path -LiteralPath (Join-Path $host_dir "sfr_cpu_diagnostic_$letter.exe")) { $letter }
+})
+$inAll = @($builds | ForEach-Object { "exe-$_-all" })
+if ($AllOnly) {
+    if (-not $inAll.Count) { throw 'No sfr_cpu_diagnostic_<a-e>.exe in out\build\host' }
+    $configs = $inAll
+} else {
+    $configs = @('baseline') + @($builds | ForEach-Object { "exe-$_" }) +
+               @('main-core', 'all', 'all-main-core', 'all-stress', 'profile') + $inAll
 }
-$configs += @('main-core', 'all', 'all-main-core', 'all-stress', 'profile')
 $out = Join-Path $root ('out/bench/smoke-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 Write-Output "Smoke run: $($configs -join ', ') (one short race each)"
 $arguments = @{ SkipBuildCheck = $true; Configs = $configs; Repeats = 1; NoWarmup = $true; AfterSay = $AfterSay; TimeoutMinutes = 10; Out = $out }

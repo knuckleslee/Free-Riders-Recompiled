@@ -15,6 +15,8 @@ rem   run_benchmark.bat dc           deferred draws and the index cache (the def
 rem   run_benchmark.bat prof         where the main thread spends a race (2 runs); send profile.md
 rem   run_benchmark.bat core         the main thread's core kept for it alone, with the default and with all, 5 rounds
 rem   run_benchmark.bat smoke        one short race with every build and setting, to check each works first; send the -smoke.md
+rem   run_benchmark.bat smoke-all    the same check for only the builds in all mode (exe-a-all ...)
+rem   run_benchmark.bat exe-all      the builds _a to _d with every guest thread in parallel, 6 rounds
 rem   run_benchmark.bat night        all of pgo, stab, exe, core and prof in a row (5 to 6 hours); send the -overview.zip
 rem   run_benchmark.bat speed 8      the same with 8 rounds
 rem   run_benchmark.bat author       the original's own unconfirmed switches: constant upload reuse, priority, host timing
@@ -33,6 +35,10 @@ if /i "%MODE%"=="author" set CONFIGS=baseline,constant-reuse,priority,no-host-ti
 if /i "%MODE%"=="exe" set CONFIGS=exe-a,exe-b
 if /i "%MODE%"=="exe3" set CONFIGS=exe-a,exe-b,exe-c
 if /i "%MODE%"=="exe4" set CONFIGS=exe-a,exe-b,exe-c,exe-d
+if /i "%MODE%"=="exe-all" (
+    set CONFIGS=exe-a-all,exe-b-all,exe-c-all,exe-d-all
+    set EXTRA=-TimeoutMinutes 10
+)
 if /i "%MODE%"=="exe-loops" set CONFIGS=exe-a,exe-b,exe-d
 if /i "%MODE%"=="pgo" set CONFIGS=baseline,exe-e
 if /i "%MODE%"=="rt" set CONFIGS=baseline,no-render-thread
@@ -83,6 +89,7 @@ echo until it says it is done. Mode %MODE%, %REPEATS% rounds.
 echo.
 if /i "%MODE%"=="night" goto night
 if /i "%MODE%"=="smoke" goto smoke
+if /i "%MODE%"=="smoke-all" goto smoke
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\benchmark.ps1" -SkipBuildCheck -Configs %CONFIGS% -Repeats %REPEATS% %EXTRA% %GAMEARGS%
 echo.
 set LATEST=
@@ -99,7 +106,9 @@ if not "%LATEST:-part=%"=="%LATEST%" echo It is one of several parts (each under
 explorer /select,"%~dp0out\bench\%LATEST%"
 goto done
 :smoke
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\smoke.ps1" %GAMEARGS%
+set SMOKEARGS=
+if /i "%MODE%"=="smoke-all" set SMOKEARGS=-AllOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\smoke.ps1" %SMOKEARGS% %GAMEARGS%
 set LATEST=
 for /f "delims=" %%Z in ('dir /b /o-d "out\bench\smoke-*-smoke.md" 2^>nul') do (
     set LATEST=%%Z

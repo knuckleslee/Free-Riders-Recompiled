@@ -6,9 +6,9 @@
 
 | 步驟 | 設定 | 輪數 | 條件 |
 | --- | --- | ---: | --- |
-| pgo | baseline、exe-e | 6 | 有 `_e.exe` 才跑 |
+| pgo | exe-a-all、exe-e-all | 6 | 有 `_a`、`_e` 才跑 |
 | stab | all、all-stress（`-AfterSay 1500`） | 10 | |
-| exe | `_a` 到 `_d` 中有的 | 6 | 至少兩個 |
+| exe | `_a` 到 `_d` 中有的，都在 `all` 模式（exe-a-all ……） | 6 | 至少兩個 |
 | core | baseline、main-core、all、all-main-core | 5 | |
 | prof | profile | 2 | |
 
@@ -58,3 +58,14 @@ all-main-core、all-stress、profile。
 
 表裡只有設定名稱、次數、結束類別（不含位址）和一個不拿來比較的幀率。全部正常才跑 `night`；
 有問題的設定先修，不放進性能比較。用假的 `benchmark.ps1` 在 pwsh 試跑過整個流程；檢查本身有單元測試。
+
+## 版本比較改在 `all` 模式下
+
+之前的版本比較（`exe`、`exe3`、`exe4`）都在預設的 `cores` 模式下跑；`all` 只用一般版跑過。`all` 是最可能成為預設的
+模式，而工作執行緒跑的也是生成碼，快速路徑、區域變數、迴圈檢查點與函式入口的改動在它底下效果可能不同，所以：
+
+- 新增 `exe-a-all` 到 `exe-e-all`（`SFR_EXE` 加 `SFR_PARALLEL_WORKER=all`）。
+- `night` 的 exe 與 pgo 步驟改用它們；`core` 步驟照舊比較一般版在兩種模式下的差別。
+- 功能檢查預設也跑它們；`run_benchmark.bat smoke-all` 只跑這幾個。`run_benchmark.bat exe-all` 是單獨的比較。
+- 快速路徑在並行時的判斷與一般存取完全相同（整頁可直接存取才直接讀寫，其餘交給一般存取，並行需要的
+  `slow_access_hook` 在那裡），所以可以直接在 `all` 下比較。

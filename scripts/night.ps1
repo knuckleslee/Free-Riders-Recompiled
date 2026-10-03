@@ -4,7 +4,7 @@
 #
 #   pgo    the usual build against the profile-guided _e        (when _e is there)
 #   stab   many short races with every guest thread in parallel
-#   exe    the builds of scripts\build_ab.ps1: _a to _d, or as many as are there
+#   exe    the builds of scripts\build_ab.ps1, _a to _d (as many as are there), all in all mode
 #   core   the main thread's core kept for it (SFR_MAIN_CORE=reserve), with and without all
 #   prof   where the main thread spends a race
 #
@@ -14,11 +14,16 @@
 # full -shareable zips only if asked. A step whose builds are missing is skipped
 # and said so; a step that fails does not stop the ones after it.
 param(
-    [ValidateSet('pgo', 'stab', 'exe', 'core', 'prof')][string[]]$Steps = @('pgo', 'stab', 'exe', 'core', 'prof'),
+    [string[]]$Steps = @('pgo', 'stab', 'exe', 'core', 'prof'),
     [string]$ImageDirectory = '',
     [string]$AssetDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
+# "pgo,stab" arrives as one string through powershell -File: split it.
+$Steps = @($Steps | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+foreach ($step in $Steps) {
+    if ($step -notin 'pgo', 'stab', 'exe', 'core', 'prof') { throw "Unknown step '$step' (pgo, stab, exe, core, prof)" }
+}
 $root = Split-Path -Parent $PSScriptRoot
 $host_dir = Join-Path $root 'out/build/host'
 $night = Join-Path $root ('out/bench/night-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -29,11 +34,12 @@ function Has([string]$letter) { Test-Path -LiteralPath (Join-Path $host_dir "sfr
 $plan = [ordered]@{}
 foreach ($step in $Steps) {
     switch ($step) {
-        'pgo'  { if (Has 'e') { $plan['pgo'] = @(@('baseline', 'exe-e'), 6, @{}) } }
+        'pgo'  { if (Has 'e' -and (Has 'a')) { $plan['pgo'] = @(@('exe-a-all', 'exe-e-all'), 6, @{ TimeoutMinutes = 10 }) } }
         'stab' { $plan['stab'] = @(@('all', 'all-stress'), 10, @{ AfterSay = 1500; TimeoutMinutes = 10 }) }
         'exe'  {
-            $builds = @(foreach ($letter in 'a', 'b', 'c', 'd') { if (Has $letter) { "exe-$letter" } })
-            if ($builds.Count -ge 2) { $plan['exe'] = @($builds, 6, @{}) }
+            # In all mode, the one most likely to become the default (core compares it with the default mode).
+            $builds = @(foreach ($letter in 'a', 'b', 'c', 'd') { if (Has $letter) { "exe-$letter-all" } })
+            if ($builds.Count -ge 2) { $plan['exe'] = @($builds, 6, @{ TimeoutMinutes = 10 }) }
         }
         'core' { $plan['core'] = @(@('baseline', 'main-core', 'all', 'all-main-core'), 5, @{ TimeoutMinutes = 10 }) }
         'prof' { $plan['prof'] = @(@('profile'), 2, @{}) }

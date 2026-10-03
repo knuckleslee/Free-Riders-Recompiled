@@ -43,11 +43,22 @@ MARKS = {
 }
 
 
+
+def marks_for(config):
+    """The marks a setting must leave: its own, and the parallel workers for any build
+    run in all mode (exe-b-all, ...)."""
+    if config in MARKS:
+        return MARKS[config]
+    if config.endswith('-all'):
+        return MARKS['all']
+    return []
+
+
 def check_log(path, config):
     """{'ended', 'race_frames', 'race_seconds', 'draws', 'cached', 'fps', 'marks', 'problems'} for one run;
     draws and fps are of the race proper, from INTRO_SECONDS on (None when it was not reached)."""
     ended, race_frames, draws, cached, has_cached, hangs = None, 0, 0, 0, False, 0
-    seconds, frame_draws, counts = [], [], {what: 0 for what, _, _ in MARKS.get(config, [])}
+    seconds, frame_draws, counts = [], [], {what: 0 for what, _, _ in marks_for(config)}
     with open(path, encoding='utf-8', errors='replace') as log:
         for line in log:
             stop = STOP.match(line)
@@ -59,7 +70,7 @@ def check_log(path, config):
                 if ended is None:
                     ended = 'hang-report'
                 continue
-            for what, pattern, _ in MARKS.get(config, []):
+            for what, pattern, _ in marks_for(config):
                 if pattern.match(line):
                     counts[what] += 1
             if not PRESENT.match(line):
@@ -92,7 +103,7 @@ def check_log(path, config):
         problems.append('比賽中沒有畫任何東西')
     if has_cached and race_frames and cached == 0:
         problems.append('索引快取沒有命中')
-    for what, _, minimum in MARKS.get(config, []):
+    for what, _, minimum in marks_for(config):
         if counts[what] < minimum:
             problems.append(f'沒看到「{what}」的記錄')
     fps = proper_draws = None

@@ -61,6 +61,15 @@ class SmokeCheck(unittest.TestCase):
             self.assertFalse(ok)
             self.assertIn('| baseline | **有問題** | 12 | 768 | — | 3840 | — | — | 比賽只跑了 12 秒', text)
 
+    def test_a_build_in_all_mode_needs_the_parallel_workers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.write(directory, 'exe-c-all-1.log', race(1600) + 'STOP present-limit\n')
+            self.write(directory, 'exe-d-all-1.log', 'PARALLEL_WORKER guest_id=2\n' * 3 + race(1600) + 'STOP present-limit\n')
+            text, ok = smoke_check.report(directory)
+            self.assertFalse(ok)
+            self.assertIn('| exe-c-all | **有問題** |', text)
+            self.assertIn('| exe-d-all | 正常 |', text)
+
 
 if __name__ == '__main__':
     unittest.main()
