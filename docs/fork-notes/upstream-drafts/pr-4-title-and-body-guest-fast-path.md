@@ -2,7 +2,7 @@ Title: perf: take guest memory's fast path once per generated function
 
 ---
 
-Refs #33. Branch: [`pr/guest-fast-path`](https://github.com/knuckleslee/Free-Riders-Recompiled/tree/pr/guest-fast-path), one commit (plus two doc commits) on `main` (`e6fc52e`, v0.4.7). 6 files, +180 / -10.
+Refs #33. Branch: [`pr/guest-fast-path`](https://github.com/knuckleslee/Free-Riders-Recompiled/tree/pr/guest-fast-path), one commit (plus two doc commits) on `main` (`e6fc52e`, v0.4.7). 6 files, +185 / -10.
 
 ## What
 
