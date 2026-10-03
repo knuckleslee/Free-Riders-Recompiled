@@ -16,8 +16,13 @@
 #   powershell -ExecutionPolicy Bypass -File $env:TEMP\pr_ab.ps1 -Repo C:\Users\Knuckles\Documents\free-riders-recompiled
 # Then, with nothing else building: git pull, scripts\make_benchmark_kit.ps1 -UpdateOnly
 # -Destination X:\sfr-benchmark-kit, and run_benchmark.bat pr on the i5.
-param([string]$Repo = (Get-Location).Path, [int]$Jobs = 4, [string]$Branch = 'pr/guest-fast-path')
+param([string]$Repo = '', [int]$Jobs = 4, [string]$Branch = 'pr/guest-fast-path')
 $ErrorActionPreference = 'Stop'
+# The checkout this script is in, else (a copy in TEMP) the current folder.
+if (-not $Repo) {
+    $Repo = Split-Path -Parent $PSScriptRoot
+    if (-not (Test-Path -LiteralPath (Join-Path $Repo 'out\recomp\ppc'))) { $Repo = (Get-Location).Path }
+}
 $Repo = (Resolve-Path -LiteralPath $Repo).Path
 $recomp = Join-Path $Repo 'out\recomp'
 foreach ($need in 'ppc', 'recompile.log') {
@@ -38,8 +43,16 @@ foreach ($dir in @(Get-ChildItem -LiteralPath (Join-Path $Repo 'tools') -Directo
     $link = Join-Path $wt "tools\$($dir.Name)"
     if (-not (Test-Path -LiteralPath $link)) { New-Item -ItemType Junction -Path $link -Target $dir.FullName | Out-Null }
 }
-if ((Test-Path -LiteralPath (Join-Path $Repo 'generated')) -and -not (Test-Path -LiteralPath (Join-Path $wt 'generated'))) {
-    New-Item -ItemType Junction -Path (Join-Path $wt 'generated') -Target (Join-Path $Repo 'generated') | Out-Null
+# So is the shader cache the build compiles in (CMake: out/shaders/basic/shader_cache_data.cpp,
+# else an empty one): without it the two programs would not be the game the kit runs.
+New-Item -ItemType Directory -Force -Path (Join-Path $wt 'out') | Out-Null
+foreach ($name in 'generated', 'out\shaders') {
+    if ((Test-Path -LiteralPath (Join-Path $Repo $name)) -and -not (Test-Path -LiteralPath (Join-Path $wt $name))) {
+        New-Item -ItemType Junction -Path (Join-Path $wt $name) -Target (Join-Path $Repo $name) | Out-Null
+    }
+}
+if (-not (Test-Path -LiteralPath (Join-Path $wt 'out\shaders\basic\shader_cache_data.cpp'))) {
+    Write-Warning "No out\shaders\basic\shader_cache_data.cpp in ${Repo}: p and q get the empty shader cache (as this checkout's own build does)."
 }
 
 Write-Output '2/5 generated code with the branch generator'
@@ -74,6 +87,20 @@ print(f'{removed} SFR_FAST_PATH lines removed')
 '@ | Set-Content -LiteralPath $strip -Encoding ASCII
 & $py $strip $fast $plain
 if ($LASTEXITCODE) { throw 'Making the plain copy failed: nothing was built.' }
+# Not required, but it says p is the very code this checkout's usual (plain) build has.
+$same = Join-Path $env:TEMP 'pr_ab_same.py'
+@'
+import sys
+from pathlib import Path
+plain, mine = Path(sys.argv[1]), Path(sys.argv[2])
+if not (mine / 'report.json').is_file():
+    print('(no out/recomp/diagnostic here to compare p with)'); sys.exit(0)
+names = sorted(p.name for p in plain.glob('*.cpp'))
+other = [n for n in names if not (mine / n).is_file() or (mine / n).read_bytes() != (plain / n).read_bytes()]
+print(f'p: all {len(names)} files the same as out/recomp/diagnostic' if not other else
+      f'p: {len(other)} of {len(names)} files differ from out/recomp/diagnostic (made from other recompiler output); p and q are still the same code but for SFR_FAST_PATH')
+'@ | Set-Content -LiteralPath $same -Encoding ASCII
+& $py $same $plain (Join-Path $recomp 'diagnostic')
 
 $hostDir = Join-Path $Repo 'out\build\host'
 New-Item -ItemType Directory -Force -Path $hostDir | Out-Null

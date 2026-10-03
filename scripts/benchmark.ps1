@@ -140,10 +140,10 @@ $settings = @{
     'exe-c'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_c.exe' }   # a third build (scripts/build_ab.ps1 -Local)
     'exe-d'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_d.exe' }   # checkpoints only at loops (scripts/build_ab.ps1 -Loops)
     'exe-e'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_e.exe' }   # profile-guided (scripts/build_pgo.ps1)
-    'exe-f'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_f.exe' }
+    'exe-f'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_f.exe' }   # profile-guided from d's code (build_pgo.ps1 -Letter f)
     # the branch for the original repository against plain upstream main (scripts/pr_ab.ps1)
     'exe-p'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_p.exe' }
-    'exe-q'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_q.exe' }   # profile-guided from d's code (build_pgo.ps1 -Letter f)
+    'exe-q'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_q.exe' }
     # the same builds with every guest thread in parallel, the mode most likely to become the default
     'exe-a-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_a.exe'; SFR_PARALLEL_WORKER = 'all' }
     'exe-b-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe'; SFR_PARALLEL_WORKER = 'all' }
