@@ -144,6 +144,9 @@ $settings = @{
     # the branch for the original repository against plain upstream main (scripts/pr_ab.ps1)
     'exe-p'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_p.exe' }
     'exe-q'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_q.exe' }
+    # q with one generated-code change each (scripts/pr_gen.ps1): checkpoints only at loops, registers in locals
+    'exe-r'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_r.exe' }
+    'exe-s'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_s.exe' }
     # plain upstream main (_p) with every guest thread in parallel, for data on all mode upstream
     'exe-p-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_p.exe'; SFR_PARALLEL_WORKER = 'all' }
     'exe-p-all-stress' = @{ SFR_EXE = 'sfr_cpu_diagnostic_p.exe'; SFR_PARALLEL_WORKER = 'all'; SFR_THREAD_START_DELAY_US = '0'; SFR_HANG_SECONDS = '60' }
