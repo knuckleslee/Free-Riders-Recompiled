@@ -17,7 +17,11 @@ std::vector<uint32_t> host_processor_order(uint64_t allowed, uint16_t group);
 // One-time placement of the calling guest thread within its current allowed
 // group/mask. Explicit CPU Sets keep their current mask. Returns the resulting
 // host mask; does not change process affinity.
+// With SFR_MAIN_CORE=reserve, placing guest processor 0 (the main thread)
+// also records its core in main_core_mask (host_placement.h).
 uint64_t pin_current_guest_processor(uint32_t guest_cpu);
+// The logical processors sharing a physical core with this one.
+uint64_t core_mask_of(uint32_t processor, uint16_t group);
 #endif
 
 class NativeThread {

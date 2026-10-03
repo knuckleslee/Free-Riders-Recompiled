@@ -1,5 +1,6 @@
 #include "avatar_transform.h"
 #include "native_presentation.h"
+#include "host_placement.h"
 #include <functional>
 
 #include "native_graphics.h"
@@ -457,6 +458,16 @@ struct NativePresentation::Impl {
         render_thread = std::thread([this] { run_render_thread(); });
     }
     void run_render_thread() {
+#ifdef _WIN32
+        // SFR_MAIN_CORE=reserve: off the main guest thread's core (host_placement.h).
+        if (const uint64_t reserved = main_core_reserved() ? main_core_mask.load() : 0) {
+            DWORD_PTR process = 0, system = 0;
+            if (GetProcessAffinityMask(GetCurrentProcess(), &process, &system)) {
+                const uint64_t mask = mask_without_reserved(uint64_t(process), reserved);
+                if (mask != uint64_t(process)) SetThreadAffinityMask(GetCurrentThread(), DWORD_PTR(mask));
+            }
+        }
+#endif
         for (;;) {
             const uint64_t head = queue_head.load(std::memory_order_relaxed);
             if (head != queue_tail.load(std::memory_order_seq_cst)) {

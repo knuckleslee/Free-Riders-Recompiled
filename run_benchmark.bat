@@ -13,6 +13,8 @@ rem   run_benchmark.bat par          every guest thread in parallel (SFR_PARALLE
 rem   run_benchmark.bat stab         many short races with every guest thread in parallel (all, and all without the thread start delay), 10 each
 rem   run_benchmark.bat dc           deferred draws and the index cache (the defaults) against each turned off, 8 rounds
 rem   run_benchmark.bat prof         where the main thread spends a race (2 runs); send profile.md
+rem   run_benchmark.bat core         the main thread's core kept for it alone, with the default and with all, 5 rounds
+rem   run_benchmark.bat night        all of pgo, stab, exe, core and prof in a row (5 to 6 hours); send the -overview.zip
 rem   run_benchmark.bat speed 8      the same with 8 rounds
 rem   run_benchmark.bat author       the original's own unconfirmed switches: constant upload reuse, priority, host timing
 rem   run_benchmark.bat speed 2 nostretch   the menu words by presents alone (cannot finish on a fast PC)
@@ -52,6 +54,11 @@ if /i "%MODE%"=="par" (
     set EXTRA=-TimeoutMinutes 10
 )
 if /i "%MODE%"=="ctrl" set CONFIGS=exe-b,exe-b-again
+if /i "%MODE%"=="core" (
+    set CONFIGS=baseline,main-core,all,all-main-core
+    set EXTRA=-TimeoutMinutes 10
+    if "%2"=="" set REPEATS=5
+)
 if /i "%MODE%"=="pipelines" (
     set CONFIGS=baseline,no-prewarm
     set EXTRA=-ColdPipelines
@@ -73,6 +80,7 @@ echo.
 echo The benchmark plays the game by itself. Do not use this PC and close other programs
 echo until it says it is done. Mode %MODE%, %REPEATS% rounds.
 echo.
+if /i "%MODE%"=="night" goto night
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\benchmark.ps1" -SkipBuildCheck -Configs %CONFIGS% -Repeats %REPEATS% %EXTRA% %GAMEARGS%
 echo.
 set LATEST=
@@ -86,6 +94,19 @@ goto done
 :found
 echo Send this file: out\bench\%LATEST%
 if not "%LATEST:-part=%"=="%LATEST%" echo It is one of several parts (each under 29 MB): send ALL the files out\bench\%LATEST:~0,15%-shareable-part*.zip
+explorer /select,"%~dp0out\bench\%LATEST%"
+goto done
+:night
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\night.ps1" %GAMEARGS%
+set LATEST=
+for /f "delims=" %%Z in ('dir /b /o-d "out\bench\night-*-overview.zip" 2^>nul') do (
+    set LATEST=%%Z
+    goto nightfound
+)
+echo No overview was made; send the newest out\bench\night-* folder's -shareable zips instead.
+goto done
+:nightfound
+echo Send this file first: out\bench\%LATEST%
 explorer /select,"%~dp0out\bench\%LATEST%"
 goto done
 :noexe

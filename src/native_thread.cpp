@@ -1,4 +1,5 @@
 #include "native_thread.h"
+#include "host_placement.h"
 
 #include "guest_memory.h"
 
@@ -250,6 +251,27 @@ std::vector<uint32_t> host_processor_order(uint64_t allowed, uint16_t group) {
     return processors_by_core(allowed, group);
 }
 
+uint64_t core_mask_of(uint32_t processor, uint16_t group) {
+    const uint64_t own = processor < 64 ? uint64_t{1} << processor : 0;
+    DWORD length = 0;
+    GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &length);
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || length == 0) return own;
+    std::vector<unsigned char> buffer(length);
+    if (!GetLogicalProcessorInformationEx(RelationProcessorCore,
+            reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buffer.data()), &length)) return own;
+    for (DWORD offset = 0; offset < length;) {
+        const auto* entry = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buffer.data() + offset);
+        if (entry->Size == 0) break;
+        if (entry->Relationship == RelationProcessorCore)
+            for (WORD i = 0; i < entry->Processor.GroupCount; ++i) {
+                const GROUP_AFFINITY& mask = entry->Processor.GroupMask[i];
+                if (mask.Group == group && (uint64_t(mask.Mask) & own)) return uint64_t(mask.Mask);
+            }
+        offset += entry->Size;
+    }
+    return own;
+}
+
 uint64_t pin_current_guest_processor(uint32_t guest_cpu) {
     if (guest_cpu >= 6) throw RuntimeStop("thread-host", guest_cpu, "guest processor index must be below 6");
     GROUP_AFFINITY current{};
@@ -258,9 +280,14 @@ uint64_t pin_current_guest_processor(uint32_t guest_cpu) {
     if (has_cpu_set_assignment(GetCurrentThread())) return current.Mask;
     const auto order = host_processor_order(current.Mask, current.Group);
     if (order.empty()) throw RuntimeStop("thread-host", 0, "calling thread has no allowed processors");
-    const uint64_t selected = uint64_t{1} << order[guest_cpu % order.size()];
+    const uint32_t processor = order[guest_cpu % order.size()];
+    const uint64_t selected = uint64_t{1} << processor;
     if (!SetThreadAffinityMask(GetCurrentThread(), static_cast<DWORD_PTR>(selected)))
         throw_host_error("SetThreadAffinityMask", GetLastError());
+    if (guest_cpu == 0 && main_core_reserved()) {
+        main_core_mask = core_mask_of(processor, current.Group);
+        std::cerr << "MAIN_CORE_RESERVED mask=0x" << std::hex << main_core_mask.load() << std::dec << '\n';
+    }
     return selected;
 }
 
@@ -291,6 +318,7 @@ uint64_t NativeThread::set_guest_processor(uint32_t guest_cpu, bool allow_migrat
         }
         processors = ordered;
     }
+    if (main_core_reserved()) processors = without_reserved(processors, main_core_mask.load());
     if (processors.empty())
         throw RuntimeStop("thread-host", 0, "cached process affinity mask is empty");
     const uint64_t selected_mask = uint64_t{1} << processors[guest_cpu % processors.size()];

@@ -100,6 +100,9 @@ $settings = @{
     'all'          = @{ SFR_PARALLEL_WORKER = 'all' }          # every guest thread in parallel (experimental)
     # all, with the 2 ms start delay of new guest threads off: the condition that made the
     # job-dispatch R6025 reproducible (docs/job-dispatch.md); a stall is reported after 60 s
+    # the main thread's core kept for it alone (host_placement.h), with the default and with all
+    'main-core'    = @{ SFR_MAIN_CORE = 'reserve' }
+    'all-main-core' = @{ SFR_PARALLEL_WORKER = 'all'; SFR_MAIN_CORE = 'reserve' }
     'all-stress'   = @{ SFR_PARALLEL_WORKER = 'all'; SFR_THREAD_START_DELAY_US = '0'; SFR_HANG_SECONDS = '60' }
     # World Grand Prix, the ring's first item, by ok alone (exploratory: the screens after it
     # are not documented); with every guest thread in parallel, where the R6025 was first seen
