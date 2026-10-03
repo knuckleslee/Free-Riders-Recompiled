@@ -11,6 +11,7 @@
 #include "guest_clock.h"
 #include "guest_function_table.h"
 #include "timestamp_bundle.h"
+#include "host_profile_stack.h"
 #include "vector_memory.h"
 #include "optional_import_policy.h"
 #include "native_modules.h"
@@ -71,6 +72,7 @@
 #include <condition_variable>
 #include <deque>
 #include <map>
+#include <tuple>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -4158,6 +4160,26 @@ int main(int argc, char** argv) {
                 if (!main_only && !std::getenv("SFR_HOST_PROFILE")) return;
                 std::unordered_map<uint64_t, uint64_t> samples;
                 const auto module = uint64_t(GetModuleHandleW(nullptr));
+                // A sample outside the executable (a wait in ntdll, the driver)
+                // also records which code here called it: the first two return
+                // addresses into this executable's code on a copy of the stack.
+                const auto* headers = reinterpret_cast<const IMAGE_NT_HEADERS*>(
+                    module + reinterpret_cast<const IMAGE_DOS_HEADER*>(module)->e_lfanew);
+                const uint64_t image_size = headers->OptionalHeader.SizeOfImage;
+                std::vector<std::pair<uint64_t, uint64_t>> code;
+                const IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(headers);
+                for (unsigned i = 0; i < headers->FileHeader.NumberOfSections; ++i, ++section)
+                    if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE)
+                        code.emplace_back(module + section->VirtualAddress,
+                                          module + section->VirtualAddress + section->Misc.VirtualSize);
+                const auto is_return = [&code](uint64_t address) {
+                    for (const auto& [begin, end] : code)
+                        if (address >= begin + 8 && address < end)
+                            return sfr::follows_call(reinterpret_cast<const uint8_t*>(address));
+                    return false;
+                };
+                std::map<std::array<uint64_t, 3>, uint64_t> outside;  // {rip, caller, its caller}
+                static uint64_t stack[1024];
                 while (!stop.stop_requested()) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     if (!sfr::profiling_now()) continue;
@@ -4169,14 +4191,59 @@ int main(int argc, char** argv) {
                     CONTEXT context{};
                     context.ContextFlags = CONTEXT_CONTROL;
                     const bool sampled = GetThreadContext(thread, &context);
+                    // ReadProcessMemory rather than a copy: it fails instead of
+                    // faulting where the stack ends, and takes no user-mode lock.
+                    SIZE_T copied = 0;
+                    const bool elsewhere = sampled && context.Rip - module >= image_size;
+                    if (elsewhere) {
+                        for (const SIZE_T bytes : {SIZE_T(sizeof(stack)), SIZE_T(2048), SIZE_T(512)}) {
+                            if (ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(context.Rsp),
+                                                  stack, bytes, &copied) && copied) break;
+                            copied = 0;
+                        }
+                    }
                     ResumeThread(thread);
                     if (sampled) ++samples[context.Rip - module];
+                    if (elsewhere) {
+                        const auto callers = sfr::first_return_addresses<2>(stack, copied / 8, is_return);
+                        ++outside[{context.Rip, callers[0] ? callers[0] - module : 0,
+                                   callers[1] ? callers[1] - module : 0}];
+                    }
                 }
                 std::vector<std::pair<uint64_t, uint64_t>> ranked;
                 for (const auto& [offset, count] : samples) ranked.emplace_back(count, offset);
                 std::sort(ranked.rbegin(), ranked.rend());
                 for (const auto& [count, offset] : ranked)
                     std::cerr << "HOST_PROFILE rva=0x" << std::hex << offset << std::dec << ' ' << count << '\n';
+                // The DLL each outside sample was in, by file name only (no
+                // folder: it would name the user or the driver's install path).
+                std::map<std::tuple<std::string, uint64_t, uint64_t>, uint64_t> by_module;
+                std::unordered_map<uint64_t, std::string> names;  // module base -> name
+                for (const auto& [where, count] : outside) {
+                    HMODULE owner = nullptr;
+                    std::string name = "unknown";
+                    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                           reinterpret_cast<LPCWSTR>(where[0]), &owner) && owner) {
+                        auto& known = names[uint64_t(owner)];
+                        if (known.empty()) {
+                            wchar_t path[MAX_PATH]{};
+                            const DWORD length = GetModuleFileNameW(owner, path, MAX_PATH);
+                            std::wstring_view file(path, length);
+                            if (const auto slash = file.find_last_of(L"\\/"); slash != file.npos)
+                                file.remove_prefix(slash + 1);
+                            for (const wchar_t c : file)
+                                known += c < 0x80 && c != L' ' ? char(c >= L'A' && c <= L'Z' ? c + 32 : c) : '_';
+                            if (known.empty()) known = "unknown";
+                        }
+                        name = known;
+                    }
+                    by_module[{name, where[1], where[2]}] += count;
+                }
+                for (const auto& [key, count] : by_module)
+                    std::cerr << "HOST_PROFILE_OUTSIDE module=" << std::get<0>(key) << " caller=0x" << std::hex
+                              << std::get<1>(key) << " caller2=0x" << std::get<2>(key) << std::dec << ' ' << count
+                              << '\n';
             });
 #endif
             std::jthread profiler([](std::stop_token stop) {

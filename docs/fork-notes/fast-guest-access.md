@@ -30,3 +30,30 @@
 自那時起沒有變，16 個單元測試照樣通過）先把每個函式的暫存器改成區域變數（v0.4.5 時在 i5 約 +4%，6 輪 5 輪較快），
 `fast_guest_access.py` 再加快速路徑，成為 `sfr_cpu_diagnostic_c.exe`。`run_benchmark.bat exe3` 讓 a（原樣）、b（快速路徑）、
 c（兩者）在同一輪比較。三次完整建置，時間約平常的三倍。
+
+## 檢查點只放在迴圈上（`build_ab.ps1 -Loops`）
+
+產生器在**每一個** `loc_` 標籤後插入 `sfr::guest_checkpoint();`，不只迴圈。大多數標籤只是往前跳的目標（if/else 匯合、
+提早離開），走到那裡時並沒有繞回過任何東西。許可只需要每個迴圈繞一圈至少遇到一次檢查點，加上每個函式入口
+（`sfr::enter_function`）本來就有，任何長時間執行的程式碼仍然一定會經過檢查點。
+
+`scripts/loop_checkpoints.py` 複製一份生成碼，只保留「同一函式中，標籤之後還有程式碼提到它」的檢查點（往回跳的
+`goto`、跳躍表的 case；連註解提到也保留，寧可多留）。其餘刪掉。檢查點每次本身很便宜（執行緒區域的倒數），
+但它是一次編譯器得假設「什麼都可能被改」的呼叫，會打斷暫存器的保留；刪掉後，直線程式碼可以一路留在暫存器。
+
+- 疊在目前改最多的版本上（有 `-Local` 時是 c，否則是 b），成為 `sfr_cpu_diagnostic_d.exe`，所以 d 與它只差這一點。
+- `run_benchmark.bat exe4`（a、b、c、d）或 `exe-loops`（a、b、d）。
+- 許可數的是檢查點次數，不是時間（`SFR_CHECKPOINT_INTERVAL`，預設 256）：檢查點變少，每一輪就變長。若 d 較快但
+  `all`／`cores` 模式的交接變慢，可以再試較小的間隔。
+- 測試：`tests/test_loop_checkpoints.py`（往回跳、跳躍表、同名標籤在別的函式、`loc_5` 與 `loc_50`、CRLF、重複處理）；
+  三種邏輯錯誤各自會讓測試失敗。**尚未在遊戲中跑過。**
+
+## 剖析：執行檔以外按 DLL 與呼叫者分類
+
+`SFR_MAIN_PROFILE` 取樣落在執行檔以外時（i5 上佔 34%），剖析器在執行緒暫停期間用 `ReadProcessMemory` 複製最多
+8 KB 堆疊（到堆疊底部會失敗而不是當掉，也不拿使用者模式的鎖），恢復執行後找出前兩個「指向本執行檔程式碼、
+且前面是 call 指令」的值（`src/host_profile_stack.h`）。結束時依位址查出 DLL，只留檔名（不留資料夾，以免帶出
+使用者名稱），印出 `HOST_PROFILE_OUTSIDE module=... caller=0x... caller2=0x... 次數`。
+
+`profile_summary.py` 多兩張表：停在哪個 DLL（ntdll＝等待／鎖、d3d12、AMD 驅動……），以及程式裡哪兩層呼叫它。
+不展開系統 DLL 內部的堆疊，所以 ntdll 裡的等待要靠呼叫者分辨是等事件、等許可還是驅動程式。
