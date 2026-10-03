@@ -19,6 +19,7 @@ rem   run_benchmark.bat smoke-all    the same check for only the builds in all m
 rem   run_benchmark.bat exe-all      the builds _a to _d with every guest thread in parallel, 6 rounds
 rem   run_benchmark.bat fastest      play the fastest build (_f: build_pgo.ps1 -Letter f) with every guest thread in parallel
 rem   run_benchmark.bat fastest-bench  the usual build as you play it now against that one, 5 rounds; send the -shareable zip
+rem   run_benchmark.bat pr           upstream main (_p) against the branch for it, pr/guest-fast-path (_q): scripts\pr_ab.ps1; 6 rounds
 rem   run_benchmark.bat night        all of pgo, stab, exe, core and prof in a row (5 to 6 hours); send the -overview.zip
 rem   run_benchmark.bat speed 8      the same with 8 rounds
 rem   run_benchmark.bat author       the original's own unconfirmed switches: constant upload reuse, priority, host timing
@@ -43,6 +44,10 @@ if /i "%MODE%"=="exe-all" (
 )
 if /i "%MODE%"=="exe-loops" set CONFIGS=exe-a,exe-b,exe-d
 if /i "%MODE%"=="pgo" set CONFIGS=baseline,exe-e
+if /i "%MODE%"=="pr" (
+    set CONFIGS=exe-p,exe-q
+    set EXTRA=-TimeoutMinutes 10
+)
 if /i "%MODE%"=="fastest-bench" (
     set CONFIGS=baseline,exe-f-all
     set EXTRA=-TimeoutMinutes 10
