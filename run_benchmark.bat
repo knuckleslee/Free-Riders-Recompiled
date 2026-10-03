@@ -34,6 +34,13 @@ set REPEATS=%2
 set CONFIGS=baseline,no-suspend-notify
 set EXTRA=
 if "%REPEATS%"=="" set REPEATS=6
+rem A mode this kit does not know would quietly run the default comparison instead
+set KNOWN=
+for %%M in (speed author exe exe3 exe4 exe-all exe-loops pgo fastest fastest-bench pr rt prof dc stab par ctrl core pipelines night smoke smoke-all) do if /i "%MODE%"=="%%M" set KNOWN=1
+if not defined KNOWN (
+    echo Unknown mode %MODE%: this kit may be older than the instructions. Update it ^(scripts\make_benchmark_kit.ps1 -UpdateOnly^) and try again.
+    goto done
+)
 if /i "%MODE%"=="author" set CONFIGS=baseline,constant-reuse,priority,no-host-timing
 if /i "%MODE%"=="exe" set CONFIGS=exe-a,exe-b
 if /i "%MODE%"=="exe3" set CONFIGS=exe-a,exe-b,exe-c
