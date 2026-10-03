@@ -23,3 +23,10 @@
 `guest_memory_test` 的 `fast_path_matches_members`：一般讀寫、跨頁、計算字、匯入變數、未對映、監看頁、
 保留期間的寫入、釘選頁，結果都與成員版相同；拿掉釘選檢查時測試失敗。`tests/test_fast_guest_access.py` 檢查插入位置與換行。
 **尚未在遊戲中跑過**；效果要在 i5 用 `exe` 模式成對量。
+
+## 與暫存器區域變數疊加（`build_ab.ps1 -Local`）
+
+`scripts/localize_registers.py`（自封存分支 `archive/upstream-kinect-20261003` 移回，產生器 `generate_diagnostic.py`
+自那時起沒有變，16 個單元測試照樣通過）先把每個函式的暫存器改成區域變數（v0.4.5 時在 i5 約 +4%，6 輪 5 輪較快），
+`fast_guest_access.py` 再加快速路徑，成為 `sfr_cpu_diagnostic_c.exe`。`run_benchmark.bat exe3` 讓 a（原樣）、b（快速路徑）、
+c（兩者）在同一輪比較。三次完整建置，時間約平常的三倍。

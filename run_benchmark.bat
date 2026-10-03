@@ -3,6 +3,7 @@ rem Runs the benchmark on this PC and leaves a copy that is safe to send to othe
 rem   run_benchmark.bat speed        baseline against the polling it replaced for suspended guests, 6 rounds
 rem   run_benchmark.bat pipelines    a new player first race, with and without the prepared pipelines
 rem   run_benchmark.bat exe          two builds, sfr_cpu_diagnostic_a.exe against _b.exe, in the same rounds
+rem   run_benchmark.bat exe3         three builds, _a, _b and _c (scripts\build_ab.ps1 -Local), in the same rounds
 rem   run_benchmark.bat ctrl         a control: the same build twice, to see what the method says about no difference
 rem   run_benchmark.bat rt           the render thread on (the default) against off, the same build
 rem   run_benchmark.bat par          every guest thread in parallel (SFR_PARALLEL_WORKER=all) against the default
@@ -24,6 +25,7 @@ set EXTRA=
 if "%REPEATS%"=="" set REPEATS=6
 if /i "%MODE%"=="author" set CONFIGS=baseline,constant-reuse,priority,no-host-timing
 if /i "%MODE%"=="exe" set CONFIGS=exe-a,exe-b
+if /i "%MODE%"=="exe3" set CONFIGS=exe-a,exe-b,exe-c
 if /i "%MODE%"=="rt" set CONFIGS=baseline,no-render-thread
 rem A run that stops on an error dialog is ended after 10 minutes, not 25
 if /i "%MODE%"=="prof" (

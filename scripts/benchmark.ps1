@@ -134,6 +134,7 @@ $settings = @{
     # and sfr_cpu_diagnostic_b.exe. SFR_EXE names the file and is not passed on to the game.
     'exe-a'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_a.exe' }
     'exe-b'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
+    'exe-c'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_c.exe' }   # a third build (scripts/build_ab.ps1 -Local)
     # the same file as exe-b under another name: a control that shows what comparing a program with itself gives
     'exe-b-again'  = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
     # samples the main thread every millisecond while the race flag is set
