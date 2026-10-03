@@ -12,4 +12,4 @@ Vulkan coverage, benchmark isolation). So:
 Open on 2026-10-03:
 
 - `pr-4-title-and-body-guest-fast-path.md`: the guest-memory fast path, branch `pr/guest-fast-path` on
-  v0.4.7 (`e6fc52e`). Not opened; the owner of this fork decides whether and when.
+  v0.4.7 (`e6fc52e`). Timed on plain v0.4.7 (+15%, 6/6 rounds). Not opened; the owner of this fork decides whether and when.
