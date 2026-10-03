@@ -20,6 +20,8 @@ rem   run_benchmark.bat exe-all      the builds _a to _d with every guest thread
 rem   run_benchmark.bat fastest      play the fastest build (_f: build_pgo.ps1 -Letter f) with every guest thread in parallel
 rem   run_benchmark.bat fastest-bench  the usual build as you play it now against that one, 5 rounds; send the -shareable zip
 rem   run_benchmark.bat pr           upstream main (_p) against the branch for it, pr/guest-fast-path (_q): scripts\pr_ab.ps1; 6 rounds
+rem   run_benchmark.bat pr-all       upstream main (_p) as it is against the same file with every guest thread in parallel; 6 rounds
+rem   run_benchmark.bat pr-stab      many short races of _p with every guest thread in parallel (all, and all without the thread start delay), 10 each
 rem   run_benchmark.bat night        all of pgo, stab, exe, core and prof in a row (5 to 6 hours); send the -overview.zip
 rem   run_benchmark.bat speed 8      the same with 8 rounds
 rem   run_benchmark.bat author       the original's own unconfirmed switches: constant upload reuse, priority, host timing
@@ -36,7 +38,7 @@ set EXTRA=
 if "%REPEATS%"=="" set REPEATS=6
 rem A mode this kit does not know would quietly run the default comparison instead
 set KNOWN=
-for %%M in (speed author exe exe3 exe4 exe-all exe-loops pgo fastest fastest-bench pr rt prof dc stab par ctrl core pipelines night smoke smoke-all) do if /i "%MODE%"=="%%M" set KNOWN=1
+for %%M in (speed author exe exe3 exe4 exe-all exe-loops pgo fastest fastest-bench pr pr-all pr-stab rt prof dc stab par ctrl core pipelines night smoke smoke-all) do if /i "%MODE%"=="%%M" set KNOWN=1
 if not defined KNOWN (
     echo Unknown mode %MODE%: this kit may be older than the instructions. Update it ^(scripts\make_benchmark_kit.ps1 -UpdateOnly^) and try again.
     goto done
@@ -54,6 +56,15 @@ if /i "%MODE%"=="pgo" set CONFIGS=baseline,exe-e
 if /i "%MODE%"=="pr" (
     set CONFIGS=exe-p,exe-q
     set EXTRA=-TimeoutMinutes 10
+)
+if /i "%MODE%"=="pr-all" (
+    set CONFIGS=exe-p,exe-p-all
+    set EXTRA=-TimeoutMinutes 10
+)
+if /i "%MODE%"=="pr-stab" (
+    set CONFIGS=exe-p-all,exe-p-all-stress
+    set EXTRA=-AfterSay 1500 -TimeoutMinutes 10
+    if "%2"=="" set REPEATS=10
 )
 if /i "%MODE%"=="fastest-bench" (
     set CONFIGS=baseline,exe-f-all
