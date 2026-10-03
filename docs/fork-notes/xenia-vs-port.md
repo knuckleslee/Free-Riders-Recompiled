@@ -27,3 +27,15 @@
 
 `run_benchmark.bat par`：`baseline`（`cores`）對 `all`，同一個程式，不用改程式碼。
 看三件事：`all` 有沒有跑完（沒跑完的趟數）、fps 比值、主執行緒排隊時間。
+
+## 另一個用 XenonRecomp 的專案：Unleashed Recompiled
+
+`hedge-dev/UnleashedRecomp` `cf829a9`（2026-06-29）同樣用 XenonRecomp，但：
+
+- 客體執行緒就是主機執行緒（`cpu/guest_thread.cpp`），沒有全域執行許可。
+- D3D 函式**全部改成排命令**：`SetRenderState`、`SetVertexShaderConstants`、`SetTexture`、`DrawPrimitive`
+  等共 29 種 `RenderCommandType`，丟進 `g_renderQueue`（`gpu/video.cpp:811`、`:1006`），由另一條執行緒執行。
+  常數只送設定的那一段，緩衝區在 `Unlock` 時複製。這就是 `gpu-thread-plan.md` 第 3 段的做法，
+  而且證明在 XenonRecomp 的架構下做得到。
+
+所以負擔集中在主執行緒不是 XenonRecomp 造成的，是本移植的執行期（全域許可、同步的 D3D 實作）的選擇。
