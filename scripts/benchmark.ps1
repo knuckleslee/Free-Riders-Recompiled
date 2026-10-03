@@ -129,9 +129,9 @@ $settings = @{
     'exe-b'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
     # the same file as exe-b under another name: a control that shows what comparing a program with itself gives
     'exe-b-again'  = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
-    # samples the main thread every millisecond during the race (from present
-    # 12200); profile.md names the functions (scripts/profile_summary.py)
-    'profile'      = @{ SFR_MAIN_PROFILE = '1'; SFR_PROFILE_AFTER = '12200' }
+    # samples the main thread every millisecond while the race flag is set
+    # (SFR_PROFILE_RACE); profile.md names the functions (scripts/profile_summary.py)
+    'profile'      = @{ SFR_MAIN_PROFILE = '1'; SFR_PROFILE_RACE = '1' }
 }
 # "a,b" arrives as one string through powershell -File.
 $Configs = @($Configs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })

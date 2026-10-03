@@ -120,6 +120,16 @@ static const uint32_t profile_after = [] {
     const char* t = std::getenv("SFR_PROFILE_AFTER");
     return t ? uint32_t(std::strtoul(t, nullptr, 10)) : 0u;
 }();
+// SFR_PROFILE_RACE=1: both profilers also wait for a race (the title's race
+// flag, as the present line's racing=1), whatever present it starts at: on a
+// slow PC the menus take many more presents than on a fast one.
+static bool profiling_now() {
+    static const bool race_only = [] { const char* t = std::getenv("SFR_PROFILE_RACE"); return t && *t != '0'; }();
+    if (present_count < profile_after) return false;
+    if (!race_only) return true;
+    constexpr uint32_t race_flag = 0x83E52F8C;  // nonzero during a race (nui_race_hooks.cpp)
+    return active_memory && active_memory->readable(race_flag, 4) && active_memory->load<uint32_t>(race_flag) != 0;
+}
 // SFR_SAMPLE_PROFILE: the most recently entered guest function, sampled every millisecond.
 static std::atomic<uint64_t> profile_address{0};  // guest thread id << 32 | address
 #ifdef _WIN32
@@ -4150,7 +4160,7 @@ int main(int argc, char** argv) {
                 const auto module = uint64_t(GetModuleHandleW(nullptr));
                 while (!stop.stop_requested()) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    if (sfr::present_count < sfr::profile_after) continue;
+                    if (!sfr::profiling_now()) continue;
                     const HANDLE thread = (main_only ? sfr::guest_host_threads[profiled] : sfr::profile_host_thread)
                         .load(std::memory_order_relaxed);
                     if (!thread || SuspendThread(thread) == DWORD(-1)) continue;
@@ -4177,7 +4187,7 @@ int main(int argc, char** argv) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     // SFR_PROFILE_AFTER=N samples only from the Nth present,
                     // so a race is measured without its loading screens.
-                    if (sfr::present_count < sfr::profile_after) continue;
+                    if (!sfr::profiling_now()) continue;
                     ++samples[sfr::profile_address.load(std::memory_order_relaxed)];
                     ++total;
                 }

@@ -7,6 +7,7 @@ rem   run_benchmark.bat ctrl         a control: the same build twice, to see wha
 rem   run_benchmark.bat rt           the render thread on (the default) against off, the same build
 rem   run_benchmark.bat par          every guest thread in parallel (SFR_PARALLEL_WORKER=all) against the default
 rem   run_benchmark.bat dc           deferred draws and the index cache (the defaults) against each turned off, 8 rounds
+rem   run_benchmark.bat prof         where the main thread spends a race (2 runs); send profile.md
 rem   run_benchmark.bat speed 8      the same with 8 rounds
 rem   run_benchmark.bat author       the original's own unconfirmed switches: constant upload reuse, priority, host timing
 rem   run_benchmark.bat speed 2 nostretch   the menu words by presents alone (cannot finish on a fast PC)
@@ -24,6 +25,10 @@ if /i "%MODE%"=="author" set CONFIGS=baseline,constant-reuse,priority,no-host-ti
 if /i "%MODE%"=="exe" set CONFIGS=exe-a,exe-b
 if /i "%MODE%"=="rt" set CONFIGS=baseline,no-render-thread
 rem A run that stops on an error dialog is ended after 10 minutes, not 25
+if /i "%MODE%"=="prof" (
+    set CONFIGS=profile
+    if "%2"=="" set REPEATS=2
+)
 if /i "%MODE%"=="dc" (
     set CONFIGS=baseline,no-deferred-draws,no-deferred-constants,no-index-cache
     if "%2"=="" set REPEATS=8
