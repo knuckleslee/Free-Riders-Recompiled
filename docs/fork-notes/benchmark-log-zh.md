@@ -559,3 +559,26 @@ script (no `order=` or `sha256=` in `info.txt`: the local branch it was made fro
 The branch is 12% faster than main; with its thread off it matches main. An earlier run of the same executable twice
 (by mistake) had the second run of a round 2.4% slower in 6 of 6 rounds, and b comes second here, so the 12% is conservative.
 The script now turns the order each round and refuses two identical executables.
+
+## 2026-10-03：i5 的 `par`（`baseline`＝`cores` 對 `all`，commit `9bf6657`，v0.4.7）
+
+i5-3470／RX 480，6 輪輪流，13 趟全部跑到 present-limit，log 裡沒有 R6025、逾時或停止點。
+**注意**：這一版腳本把遊戲視窗藏起來（`-WindowStyle Hidden`，`9499ba6` 已改回），兩種設定條件相同。
+
+summary 的數字是 `all` +43%（6/6），**但這個數字偏高**：兩種設定都量 3468 格，`all` 比較快，
+所以同樣格數只涵蓋比賽前 78 秒，`baseline` 涵蓋 112 秒。比賽前 20 秒是倒數和開場（每格 70–160 次繪製，很快），
+80–110 秒是重的段落（每格約 1000 次繪製），`all` 的視窗剛好多算輕的、少算重的。
+
+改用**同一段比賽時間**（比賽開始後 20–75 秒）比較：
+
+| | fps | P95 ms | 每格繪製 | 主執行緒持有 ms | 排隊 ms | 等待 ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| baseline（6 趟） | 25.5–26.3 | 46.7–49.9 | 785–821 | 27.8–29.1 | 4.2–4.4 | 5.6–5.9 |
+| all（6 趟） | 29.7–31.2 | 39.6–43.7 | 747–800 | 26.9–28.6 | 2.3–2.4 | 2.7–2.8 |
+
+逐輪比值 1.20、1.17、1.20、1.18、1.14、1.13，中位數約 **1.18**，6/6；baseline 各趟差約 3%。
+機制吻合：主執行緒每格的排隊與等待合計從約 10 ms 降到約 5 ms。每格繪製少約 4%，在比賽本身的變動範圍內，但要留意。
+
+- **穩定性只驗證了「自由比賽一場」**：作者當初的 R6025 出現在 Grand Prix 載入（`gp03`），這裡沒有跑到。
+- **量測方法的問題**：固定格數的視窗在兩個設定速度差很多時會偏向較快的那個。之前的大效果（渲染執行緒約 +12%）
+  也有同方向的偏差，只是較小。應該改成固定比賽時間的視窗。
