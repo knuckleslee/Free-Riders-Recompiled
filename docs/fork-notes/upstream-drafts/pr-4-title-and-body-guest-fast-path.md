@@ -1,3 +1,5 @@
+Opened as https://github.com/YuutaTsubasa/Free-Riders-Recompiled/pull/38 (2026-10-04).
+
 Title: perf: take guest memory's fast path once per generated function
 
 ---

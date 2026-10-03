@@ -1,3 +1,5 @@
+Posted as https://github.com/YuutaTsubasa/Free-Riders-Recompiled/issues/33#issuecomment-5971867013 (2026-10-04).
+
 Comment for #33. Not posted; the owner of this fork decides. Complete as it is, from fork builds only.
 If `run_benchmark.bat pr-all` / `pr-stab` (plain v0.4.7) are run later, their numbers can replace or join
 the fork-build ones.
