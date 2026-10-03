@@ -70,3 +70,16 @@ renderer flushes. `SFR_DEFERRED_CONSTANTS=0` swaps them on the calling thread
 as before; the constant reuse experiment (`SFR_CONSTANT_UPLOAD_REUSE=1`) and a
 disabled render thread also keep the old path. Tested by the staged-constants
 case of `native_resolution_render_thread`; not yet measured in a race.
+
+## Deferred draws
+
+A draw whose constants are staged is deferred whole: its pipeline state
+(shaders, input elements, blend, depth, stencil, cull), shared and loop
+constants are copied into the same slot, and the render thread resolves the
+pipeline (`NativeRenderer::Impl::resolve_pipeline`, under a lock shared with
+`take_pipeline_work` and the manifest) and writes those constants into the
+ring before recording. Vertices, indices and the palette are still written by
+the guest's thread. `SFR_DEFERRED_DRAWS=0` keeps pipeline resolution on the
+guest's thread with the constants still staged. Covered by
+`native_resolution_render_thread` (a draw with another pipeline between
+others) and `native_resolution_staged_constants`; not yet measured in a race.

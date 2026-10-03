@@ -109,6 +109,8 @@ $settings = @{
     'no-render-thread' = @{ SFR_RENDER_THREAD = '0' }
     # draw constants swapped on the guest's thread again (the default stages them for the render thread)
     'no-deferred-constants' = @{ SFR_DEFERRED_CONSTANTS = '0' }
+    # draw pipelines resolved and small constants written on the guest's thread again (constants still staged)
+    'no-deferred-draws' = @{ SFR_DEFERRED_DRAWS = '0' }
     # pipelines are only built when a draw first needs them, as before (the
     # manifest is still written: NativeRenderer::Impl::load_manifest)
     'no-prewarm'   = @{ SFR_PIPELINE_PREWARM = '0' }

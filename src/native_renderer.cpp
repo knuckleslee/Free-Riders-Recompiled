@@ -27,6 +27,7 @@
 #include <filesystem>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -294,7 +295,37 @@ struct NativeRenderer::Impl {
     // same order by the render thread once it has swapped them into the ring.
     static constexpr uint64_t staged_slots = 4608;  // more than the record queue holds
     static constexpr size_t staged_words = 2048;
-    std::vector<uint32_t> staged;
+    // A deferred draw's pipeline state and small constants, copied by the
+    // guest's thread for the render thread, which resolves the pipeline
+    // (resolve_pipeline) and writes the constants into the ring itself.
+    static constexpr size_t deferred_elements = 32;
+    struct DeferredDraw {
+        plume::RenderPrimitiveTopology topology;
+        uint32_t stride, element_count, pixel_link_constants, pixel_spec_constants;
+        const plume::RenderShader* vertex_shader;
+        const plume::RenderShader* pixel_shader;
+        const ShaderCacheEntry* vertex_entry;
+        const ShaderCacheEntry* pixel_entry;
+        plume::RenderInputElement elements[deferred_elements];
+        NativeBlendControl blend;
+        uint8_t write_mask, stencil_reference, stencil_read_mask, stencil_write_mask;
+        bool depth_enabled, depth_write, stencil_enabled;
+        plume::RenderComparisonFunction depth_function;
+        plume::RenderStencilFaceDesc stencil_front, stencil_back;
+        plume::RenderCullMode cull;
+        SharedConstants shared;
+        std::array<int32_t, 64> loop_constants;
+    };
+    struct StagedSlot {
+        std::array<uint32_t, staged_words> constants;
+        DeferredDraw draw;
+    };
+    std::vector<StagedSlot> staged;
+    StagedSlot& staged_slot() { return staged[staged_produced % staged_slots]; }
+    // pipelines, recipe_pipelines, recipes and their counters: resolved on the
+    // render thread for deferred draws, read by take_pipeline_work.
+    std::mutex pipeline_lock;
+    plume::RenderPipeline* resolve_pipeline(const NativeDraw& draw);
     uint64_t staged_produced = 0;
     std::atomic<uint64_t> staged_consumed{0};
     std::set<uint64_t> dynamic_ranges;  // physical starts of rewritten textures
@@ -410,6 +441,7 @@ struct NativeRenderer::Impl {
 
 void NativeRenderer::Impl::save_manifest() noexcept {
     manifest_saved_at = std::chrono::steady_clock::now();
+    std::lock_guard guard(pipeline_lock);
     if (!manifest_dirty || learned_manifest.empty()) return;
     try {
         std::vector<PipelineRecipe> entries;
@@ -689,20 +721,20 @@ std::span<uint32_t> NativeRenderer::constant_staging() {
     if (!deferred || impl_->constant_reuse_probe || impl_->constant_uploads ||
         !impl_->presentation.records_asynchronously())
         return {};
-    if (impl_->staged.empty()) impl_->staged.resize(Impl::staged_slots * Impl::staged_words);
+    if (impl_->staged.empty()) impl_->staged.resize(Impl::staged_slots);
     // Every slot still waits for the render thread: flush empties the queue
     // (or discards it after a failure), after which no slot is in use.
     if (impl_->staged_produced - impl_->staged_consumed.load(std::memory_order_acquire) >= Impl::staged_slots) {
         impl_->presentation.flush();
         impl_->staged_consumed.store(impl_->staged_produced, std::memory_order_relaxed);
     }
-    return {impl_->staged.data() + (impl_->staged_produced % Impl::staged_slots) * Impl::staged_words,
-            Impl::staged_words};
+    return impl_->staged_slot().constants;
 }
 
 NativeRenderer::PipelineWork NativeRenderer::take_pipeline_work() noexcept {
     if (impl_->manifest_dirty && std::chrono::steady_clock::now() - impl_->manifest_saved_at > std::chrono::seconds(30))
         impl_->save_manifest();
+    std::lock_guard guard(impl_->pipeline_lock);
     PipelineWork work{impl_->pipelines_created, impl_->pipeline_ms,
                             impl_->ring_flushes, impl_->textures_uploaded, impl_->texture_ms};
     if (auto* probe = impl_->constant_reuse_probe.get()) {
@@ -1145,8 +1177,12 @@ uint32_t NativeRenderer::sampler(const FetchWords& words) {
     return index;
 }
 
-void NativeRenderer::draw(const NativeDraw& draw) {
-    auto& device = impl_->graphics.device();
+// The pipeline for a draw's state, created (and recorded in the learned
+// manifest) the first time the state is met. Called by whichever thread
+// records the draw: the guest's, or the render thread for a deferred draw.
+plume::RenderPipeline* NativeRenderer::Impl::resolve_pipeline(const NativeDraw& draw) {
+    std::lock_guard guard(pipeline_lock);
+    auto& device = graphics.device();
     static const bool bulk_key = [] {
         const char* value = std::getenv("SFR_PIPELINE_KEY_BULK");
         return !value || *value != '0';
@@ -1169,12 +1205,10 @@ void NativeRenderer::draw(const NativeDraw& draw) {
         if (++verified == 1 || verified % 100000 == 0)
             std::cerr << "NATIVE_PIPELINE_KEY verified=" << verified << '\n';
     }
-    auto& pipeline = impl_->pipelines[key];  // copies the key only when inserting
-    const std::array<plume::RenderInputSlot, 2> slots{plume::RenderInputSlot(0, draw.stride),
-                                                       plume::RenderInputSlot(zero_slot, 0)};
+    auto& pipeline = pipelines[key];  // copies the key only when inserting
     std::optional<PipelineRecipe> recipe;
     std::vector<uint8_t> recipe_key;
-    if (!pipeline && !impl_->learned_manifest.empty() && draw.vertex_entry && draw.pixel_entry) {
+    if (!pipeline && !learned_manifest.empty() && draw.vertex_entry && draw.pixel_entry) {
         try {
             recipe.emplace();
             recipe->vertex = pipeline_shader_id(draw.vertex_entry->source);
@@ -1182,10 +1216,10 @@ void NativeRenderer::draw(const NativeDraw& draw) {
             recipe->pixel_link_constants = draw.pixel_link_constants;
             recipe->state = draw;
             recipe_key = pipeline_recipe_key(*recipe);
-            if (const auto found = impl_->recipe_pipelines.find(recipe_key); found != impl_->recipe_pipelines.end()) {
+            if (const auto found = recipe_pipelines.find(recipe_key); found != recipe_pipelines.end()) {
                 pipeline = found->second;
-                ++impl_->prewarm_hits;
-                std::cerr << "PIPELINE_PREWARM hit=" << impl_->prewarm_hits << '\n';
+                ++prewarm_hits;
+                std::cerr << "PIPELINE_PREWARM hit=" << prewarm_hits << '\n';
             }
         } catch (const std::invalid_argument& error) {
             std::cerr << "PIPELINE_MANIFEST unrecordable=" << error.what() << '\n';
@@ -1194,24 +1228,37 @@ void NativeRenderer::draw(const NativeDraw& draw) {
     }
     if (!pipeline) {
         const auto pipeline_start = std::chrono::steady_clock::now();
-        pipeline = create_draw_pipeline(device, impl_->layout.get(), draw, impl_->graphics.backend());
+        pipeline = create_draw_pipeline(device, layout.get(), draw, graphics.backend());
         if (!pipeline) unsupported(0, "native graphics pipeline creation failed");
-        ++impl_->pipelines_created;
-        impl_->pipeline_ms += std::chrono::duration<double, std::milli>(
+        ++pipelines_created;
+        pipeline_ms += std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - pipeline_start).count();
         if (recipe) {
-            impl_->recipe_pipelines.emplace(recipe_key, pipeline);
-            if (impl_->recipes.size() < pipeline_manifest_max_recipes) {
+            recipe_pipelines.emplace(recipe_key, pipeline);
+            if (recipes.size() < pipeline_manifest_max_recipes) {
                 // Round-trip removes per-draw pointers, spans and constants;
                 // only immutable owned pipeline state is retained.
-                const auto encoded = encode_pipeline_manifest(std::span(&*recipe, 1), uint32_t(impl_->graphics.backend()));
-                auto clean = decode_pipeline_manifest(encoded, uint32_t(impl_->graphics.backend()));
-                impl_->recipes.insert_or_assign(recipe_key, std::move(clean.front()));
-                impl_->manifest_dirty = true;
+                const auto encoded = encode_pipeline_manifest(std::span(&*recipe, 1), uint32_t(graphics.backend()));
+                auto clean = decode_pipeline_manifest(encoded, uint32_t(graphics.backend()));
+                recipes.insert_or_assign(recipe_key, std::move(clean.front()));
+                manifest_dirty = true;
             }
         }
     }
 
+    return pipeline.get();
+}
+
+void NativeRenderer::draw(const NativeDraw& draw) {
+    // A draw whose constants are staged is deferred whole: the render thread
+    // resolves its pipeline and writes its small constants too, so the guest's
+    // thread only copies its state (SFR_DEFERRED_DRAWS=0 keeps both here).
+    static const bool defer_draws = [] {
+        const char* text = std::getenv("SFR_DEFERRED_DRAWS");
+        return !text || *text != '0';
+    }();
+    const bool deferred = defer_draws && draw.staged_constants && draw.elements.size() <= Impl::deferred_elements;
+    plume::RenderPipeline* const pipeline = deferred ? nullptr : impl_->resolve_pipeline(draw);
     // Per-draw upload: vertices, then the three constant buffers (256-aligned).
     // Per-draw data lives in a persistent upload ring that is recycled after
     // the frame's command list completes.
@@ -1247,12 +1294,12 @@ void NativeRenderer::draw(const NativeDraw& draw) {
         probe->valid = true;
     }
     uint64_t vs_offset = base_offset + vs_rel, ps_offset = base_offset + ps_rel;
-    const uint32_t* const staged = draw.staged_constants;
+    Impl::StagedSlot* staged = nullptr;
     uint8_t* const staged_into = mapped + vs_rel;  // the vertex then the pixel constants, 8 KiB
-    if (staged) {
-        if (impl_->staged.empty() ||
-            staged != impl_->staged.data() + (impl_->staged_produced % Impl::staged_slots) * Impl::staged_words)
+    if (draw.staged_constants) {
+        if (impl_->staged.empty() || draw.staged_constants != impl_->staged_slot().constants.data())
             unsupported(0, "staged constants are not the slot constant_staging gave");
+        staged = &impl_->staged_slot();
         ++impl_->staged_produced;
     } else if (auto* constants = impl_->constant_uploads.get()) {
         // A hit references an immutable slot from this same ring lifetime.
@@ -1266,7 +1313,10 @@ void NativeRenderer::draw(const NativeDraw& draw) {
         std::memcpy(mapped + vs_rel, draw.vertex_constants.data(), 4096);
         std::memcpy(mapped + ps_rel, draw.pixel_constants.data(), 4096);
     }
-    std::memcpy(mapped + shared_rel, &draw.shared, sizeof(draw.shared));
+    // Written by the render thread for a deferred draw (from its slot).
+    SharedConstants* const shared_to = deferred ? &staged->draw.shared : nullptr;
+    if (deferred) staged->draw.shared = draw.shared;
+    else std::memcpy(mapped + shared_rel, &draw.shared, sizeof(draw.shared));
     if (impl_->presentation.width() != impl_->presentation.render_width() ||
         impl_->presentation.height() != impl_->presentation.render_height()) {
         auto shared = draw.shared;
@@ -1274,7 +1324,8 @@ void NativeRenderer::draw(const NativeDraw& draw) {
         shared.resolved_texture_scale[1] = float(impl_->presentation.height()) / impl_->presentation.render_height();
         for (auto& descriptor : shared.texture_2d)
             if (descriptor < texture_capacity && impl_->resolved_texture_indices.test(descriptor)) descriptor |= 0x80000000u;
-        std::memcpy(mapped + shared_rel, &shared, sizeof(shared));
+        if (shared_to) *shared_to = shared;
+        else std::memcpy(mapped + shared_rel, &shared, sizeof(shared));
     }
     const bool vulkan = impl_->graphics.backend() == GraphicsBackend::vulkan;
     const uint64_t upload_address = vulkan ? upload->getDeviceAddress() : 0;
@@ -1286,7 +1337,34 @@ void NativeRenderer::draw(const NativeDraw& draw) {
     if (!draw.palette.empty())
         std::memcpy(mapped + palette_rel, draw.palette.data(),
                     (std::min)(size_t(palette_bytes), draw.palette.size()));
-    std::memcpy(mapped + loop_rel, draw.loop_constants.data(), sizeof(draw.loop_constants));
+    if (deferred) {
+        auto& state = staged->draw;
+        state.loop_constants = draw.loop_constants;
+        state.topology = draw.topology;
+        state.stride = draw.stride;
+        state.element_count = uint32_t(draw.elements.size());
+        std::copy(draw.elements.begin(), draw.elements.end(), state.elements);
+        state.pixel_link_constants = draw.pixel_link_constants;
+        state.pixel_spec_constants = draw.pixel_spec_constants;
+        state.vertex_shader = draw.vertex_shader;
+        state.pixel_shader = draw.pixel_shader;
+        state.vertex_entry = draw.vertex_entry;
+        state.pixel_entry = draw.pixel_entry;
+        state.blend = draw.blend;
+        state.write_mask = draw.write_mask;
+        state.depth_enabled = draw.depth_enabled;
+        state.depth_write = draw.depth_write;
+        state.depth_function = draw.depth_function;
+        state.stencil_enabled = draw.stencil_enabled;
+        state.stencil_reference = draw.stencil_reference;
+        state.stencil_read_mask = draw.stencil_read_mask;
+        state.stencil_write_mask = draw.stencil_write_mask;
+        state.stencil_front = draw.stencil_front;
+        state.stencil_back = draw.stencil_back;
+        state.cull = draw.cull;
+    } else {
+        std::memcpy(mapped + loop_rel, draw.loop_constants.data(), sizeof(draw.loop_constants));
+    }
     if (index_bytes) std::memcpy(mapped + index_rel, draw.indices.data(), index_bytes);
     const uint64_t shared_offset = base_offset + shared_rel;
 
@@ -1303,15 +1381,47 @@ void NativeRenderer::draw(const NativeDraw& draw) {
     const plume::RenderBuffer* const vertex_buffer = draw.vertex_buffer;
     const uint32_t index_count = uint32_t(draw.indices.size());
     const int32_t base_vertex_location = draw.base_vertex_location;
-    impl_->presentation.record_async([impl = impl_.get(), pipeline = pipeline.get(), palette_bound, stencil_enabled,
+    impl_->presentation.record_async([impl = impl_.get(), pipeline, deferred, mapped, palette_bound, stencil_enabled,
                                       stencil_reference, stride, vertex_count, vertex_view_bytes, vertex_buffer,
                                       index_count, base_vertex_location, index_bytes, vulkan, upload_address,
                                       ring_address, upload, base_offset, vs_offset, ps_offset, shared_rel,
                                       palette_rel, loop_rel, index_rel, shared_offset, staged,
                                       staged_into](plume::RenderCommandList& list, uint64_t generation) {
+        plume::RenderPipeline* bound = pipeline;
         if (staged) {
             swap_words_into({staged_into, Impl::staged_words * 4},
-                            {reinterpret_cast<const uint8_t*>(staged), Impl::staged_words * 4});
+                            {reinterpret_cast<const uint8_t*>(staged->constants.data()), Impl::staged_words * 4});
+            if (deferred) {
+                const auto& state = staged->draw;
+                std::memcpy(mapped + shared_rel, &state.shared, sizeof(state.shared));
+                std::memcpy(mapped + loop_rel, state.loop_constants.data(), sizeof(state.loop_constants));
+                // The render thread's own NativeDraw: only the pipeline fields
+                // are assigned, the constant arrays are never read.
+                static thread_local NativeDraw resolved;
+                resolved.topology = state.topology;
+                resolved.stride = state.stride;
+                resolved.elements.assign(state.elements, state.elements + state.element_count);
+                resolved.pixel_link_constants = state.pixel_link_constants;
+                resolved.pixel_spec_constants = state.pixel_spec_constants;
+                resolved.vertex_shader = state.vertex_shader;
+                resolved.pixel_shader = state.pixel_shader;
+                resolved.vertex_entry = state.vertex_entry;
+                resolved.pixel_entry = state.pixel_entry;
+                resolved.blend = state.blend;
+                resolved.write_mask = state.write_mask;
+                resolved.depth_enabled = state.depth_enabled;
+                resolved.depth_write = state.depth_write;
+                resolved.depth_function = state.depth_function;
+                resolved.stencil_enabled = state.stencil_enabled;
+                resolved.stencil_reference = state.stencil_reference;
+                resolved.stencil_read_mask = state.stencil_read_mask;
+                resolved.stencil_write_mask = state.stencil_write_mask;
+                resolved.stencil_front = state.stencil_front;
+                resolved.stencil_back = state.stencil_back;
+                resolved.cull = state.cull;
+                bound = impl->resolve_pipeline(resolved);
+            }
+            // Nothing below reads the slot.
             impl->staged_consumed.fetch_add(1, std::memory_order_release);
         }
         const std::array<plume::RenderInputSlot, 2> slots{plume::RenderInputSlot(0, stride),
@@ -1327,9 +1437,9 @@ void NativeRenderer::draw(const NativeDraw& draw) {
             list.setVertexBuffers(zero_slot, &zeros, 1, &slots[1]);
             impl->bound_pipeline = nullptr;
         }
-        if (impl->bound_pipeline != pipeline) {
-            list.setPipeline(pipeline);
-            impl->bound_pipeline = pipeline;
+        if (impl->bound_pipeline != bound) {
+            list.setPipeline(bound);
+            impl->bound_pipeline = bound;
         }
 #ifdef _WIN32
         // Plume's D3D12 backend sets the pipeline's stencil reference at each

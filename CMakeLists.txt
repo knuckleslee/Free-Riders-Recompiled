@@ -804,6 +804,10 @@ if(WIN32 OR UNIX)
     # The same with the render thread forced on, which stages draw constants.
     add_test(NAME native_resolution_render_thread COMMAND sfr_native_resolution_test)
     set_tests_properties(native_resolution_render_thread PROPERTIES TIMEOUT 120 ENVIRONMENT "SFR_RENDER_THREAD=1")
+    # Staged constants without deferring the rest of the draw.
+    add_test(NAME native_resolution_staged_constants COMMAND sfr_native_resolution_test)
+    set_tests_properties(native_resolution_staged_constants PROPERTIES TIMEOUT 120
+                         ENVIRONMENT "SFR_RENDER_THREAD=1;SFR_DEFERRED_DRAWS=0")
     add_executable(sfr_native_pipeline_prewarm_test tests/native_pipeline_prewarm_test.cpp src/guest_memory.cpp)
     target_link_libraries(sfr_native_pipeline_prewarm_test PRIVATE sfr_guest_graphics)
     target_compile_definitions(sfr_native_pipeline_prewarm_test PRIVATE SFR_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

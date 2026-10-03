@@ -348,17 +348,24 @@ float4 shaderMain(float4 position : SV_Position, float red : TEXCOORD0) : SV_Tar
                 draw.staged_constants = staging.data();
             };
             const std::array<float,4> red{0.25f,0.75f,0.25f,0.75f}, green{0.875f,0.5f,0.5f,0.875f};
+            // Column 2 writes no colour: another pipeline, which a deferred
+            // draw resolves on the render thread between the others.
             for (int column = 0; column < 4; ++column) {
                 stage(red[column], green[column]);
+                draw.write_mask = column == 2 ? 0 : 0xF;
                 presentation.set_raster_state({0,0,16,16}, {column*4,0,(column+1)*4,16});
                 renderer.draw(draw);
             }
+            draw.write_mask = 0xF;
             const auto pixels = presentation.readback_color();
             for (uint32_t y=0; y<16; ++y) for (uint32_t x=0; x<16; ++x) {
                 const size_t at = (y*16+x)*4;
-                require(std::abs(int(pixels[at+2])-int(red[x/4]*255+0.5f))<=1 &&
-                        std::abs(int(pixels[at+1])-int(green[x/4]*255+0.5f))<=1,
-                        "the render thread swaps each draw's staged constants into its own offset");
+                if (x/4 == 2)
+                    require(pixels[at+2] <= 1 && pixels[at+1] <= 1, "a draw's own pipeline state applies to it alone");
+                else
+                    require(std::abs(int(pixels[at+2])-int(red[x/4]*255+0.5f))<=1 &&
+                            std::abs(int(pixels[at+1])-int(green[x/4]*255+0.5f))<=1,
+                            "the render thread swaps each draw's staged constants into its own offset");
             }
             // More draws than staging slots, without a flush in between: slots
             // are reused only after the render thread has released them.
