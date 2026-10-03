@@ -912,8 +912,19 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
         sfr::swap_words({reinterpret_cast<uint8_t*>(into.data()),into.size()*4});
     };
     const auto constants_start=metrics_clock();
-    constants(1920,draw.vertex_constants);
-    constants(6016,draw.pixel_constants);
+    // With a render thread the words are copied as the guest holds them and
+    // swapped there, straight into the upload ring (NativeDraw::staged_constants).
+    if(const auto staging=graphics().renderer().constant_staging(); !staging.empty()) {
+        memory.check(uint64_t(device)+1920,4096);
+        memory.check(uint64_t(device)+6016,4096);
+        std::memcpy(staging.data(),memory.base()+uint64_t(device)+1920,4096);
+        std::memcpy(staging.data()+1024,memory.base()+uint64_t(device)+6016,4096);
+        draw.staged_constants=staging.data();
+    } else {
+        draw.staged_constants=nullptr;
+        constants(1920,draw.vertex_constants);
+        constants(6016,draw.pixel_constants);
+    }
     if(frame_metrics) frame_constants_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-constants_start).count();
     // Loop constants i0..i15 (+10140, one packed register each: count, start
     // and step as signed bytes) for a shader whose loops count with them.
@@ -1050,10 +1061,15 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
         std::cerr << "NATIVE_DRAW_DUMP index=" << dumped << " lr=0x" << std::hex << ctx.lr << std::dec << " floats=";
         for(size_t i=0;i+4<=draw.vertices.size();i+=4)
             std::cerr << (i?",":"") << std::bit_cast<float>(uint32_t(draw.vertices[i]|draw.vertices[i+1]<<8|draw.vertices[i+2]<<16|draw.vertices[i+3]<<24));
+        // Staged constants are still big-endian (the slot outlives this draw).
+        const auto constant=[&](bool pixel,uint32_t i) {
+            return draw.staged_constants ? __builtin_bswap32(draw.staged_constants[(pixel?1024:0)+i])
+                                         : (pixel?draw.pixel_constants:draw.vertex_constants)[i];
+        };
         std::cerr << " vs_c0..c7=";
-        for(uint32_t i=0;i<32;++i) std::cerr << (i?",":"") << std::bit_cast<float>(draw.vertex_constants[i]);
+        for(uint32_t i=0;i<32;++i) std::cerr << (i?",":"") << std::bit_cast<float>(constant(false,i));
         std::cerr << " ps_c0..c3=";
-        for(uint32_t i=0;i<16;++i) std::cerr << (i?",":"") << std::bit_cast<float>(draw.pixel_constants[i]);
+        for(uint32_t i=0;i<16;++i) std::cerr << (i?",":"") << std::bit_cast<float>(constant(true,i));
         std::cerr << " elements=";
         for(const auto& e:draw.elements) if(e.slotIndex==0) std::cerr << e.semanticName << e.semanticIndex << "@" << e.location << "/s" << e.slotIndex << "+" << e.alignedByteOffset << ";";
         std::cerr << '\n';

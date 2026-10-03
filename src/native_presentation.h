@@ -87,6 +87,9 @@ public:
             (*static_cast<const Body*>(payload))(list, generation);
         }, &body, sizeof(Body));
     }
+    // Whether record_async hands its bodies to the render thread (otherwise it
+    // runs them on the calling thread, straight away).
+    [[nodiscard]] bool records_asynchronously() const;
     // Changes when a list begins or a custom pass invalidates guest bindings.
     uint64_t list_generation() const;
     // Submits the recorded draws and clears and waits for them (and for a

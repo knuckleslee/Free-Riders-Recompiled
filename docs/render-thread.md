@@ -57,3 +57,16 @@ release its resources. A separate submission without a presentation frame also
 verifies that failed cleanup waits for independent upload work.
 Presentation and resolution tests pass on the local
 RTX 4090 using both D3D12 and Vulkan; Vulkan remains disabled by default.
+
+## Staged draw constants
+
+With the render thread on, a draw's 2048 constant words (vertex then pixel)
+are copied from the device as the guest holds them into a staging slot
+(`NativeRenderer::constant_staging`), and the render thread swaps them into
+that draw's offset of the upload ring before it records the draw. The guest's
+thread no longer byte-swaps them or writes them to write-combined memory.
+Slots are handed out and released in order; when every slot still waits, the
+renderer flushes. `SFR_DEFERRED_CONSTANTS=0` swaps them on the calling thread
+as before; the constant reuse experiment (`SFR_CONSTANT_UPLOAD_REUSE=1`) and a
+disabled render thread also keep the old path. Tested by the staged-constants
+case of `native_resolution_render_thread`; not yet measured in a race.

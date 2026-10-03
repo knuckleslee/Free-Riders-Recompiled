@@ -289,6 +289,14 @@ struct NativeRenderer::Impl {
     std::unique_ptr<ConstantReuseProbe> constant_reuse_probe;
     std::unique_ptr<std::array<NativeConstantUpload, 2>> constant_uploads;
     uint64_t constant_saved_bytes = 0;
+    // Staged constants (NativeDraw::staged_constants): slots of 2048 guest
+    // words, handed out in order to the guest's thread and released in the
+    // same order by the render thread once it has swapped them into the ring.
+    static constexpr uint64_t staged_slots = 4608;  // more than the record queue holds
+    static constexpr size_t staged_words = 2048;
+    std::vector<uint32_t> staged;
+    uint64_t staged_produced = 0;
+    std::atomic<uint64_t> staged_consumed{0};
     std::set<uint64_t> dynamic_ranges;  // physical starts of rewritten textures
     std::map<uint32_t, TextureRange> texture_ranges;  // by descriptor index
     // Destination address of a resolve to its descriptor index (the copy of
@@ -672,6 +680,25 @@ NativeRenderer::~NativeRenderer() {
     impl_->save_manifest();
 }
 uint32_t NativeRenderer::draws() const noexcept { return impl_->draws; }
+
+std::span<uint32_t> NativeRenderer::constant_staging() {
+    static const bool deferred = [] {
+        const char* text = std::getenv("SFR_DEFERRED_CONSTANTS");
+        return !text || *text != '0';
+    }();
+    if (!deferred || impl_->constant_reuse_probe || impl_->constant_uploads ||
+        !impl_->presentation.records_asynchronously())
+        return {};
+    if (impl_->staged.empty()) impl_->staged.resize(Impl::staged_slots * Impl::staged_words);
+    // Every slot still waits for the render thread: flush empties the queue
+    // (or discards it after a failure), after which no slot is in use.
+    if (impl_->staged_produced - impl_->staged_consumed.load(std::memory_order_acquire) >= Impl::staged_slots) {
+        impl_->presentation.flush();
+        impl_->staged_consumed.store(impl_->staged_produced, std::memory_order_relaxed);
+    }
+    return {impl_->staged.data() + (impl_->staged_produced % Impl::staged_slots) * Impl::staged_words,
+            Impl::staged_words};
+}
 
 NativeRenderer::PipelineWork NativeRenderer::take_pipeline_work() noexcept {
     if (impl_->manifest_dirty && std::chrono::steady_clock::now() - impl_->manifest_saved_at > std::chrono::seconds(30))
@@ -1220,7 +1247,14 @@ void NativeRenderer::draw(const NativeDraw& draw) {
         probe->valid = true;
     }
     uint64_t vs_offset = base_offset + vs_rel, ps_offset = base_offset + ps_rel;
-    if (auto* constants = impl_->constant_uploads.get()) {
+    const uint32_t* const staged = draw.staged_constants;
+    uint8_t* const staged_into = mapped + vs_rel;  // the vertex then the pixel constants, 8 KiB
+    if (staged) {
+        if (impl_->staged.empty() ||
+            staged != impl_->staged.data() + (impl_->staged_produced % Impl::staged_slots) * Impl::staged_words)
+            unsupported(0, "staged constants are not the slot constant_staging gave");
+        ++impl_->staged_produced;
+    } else if (auto* constants = impl_->constant_uploads.get()) {
         // A hit references an immutable slot from this same ring lifetime.
         // Keep the allocation layout unchanged, including the unused slots.
         const auto vs = (*constants)[0].upload(draw.vertex_constants, vs_offset, mapped + vs_rel);
@@ -1273,8 +1307,13 @@ void NativeRenderer::draw(const NativeDraw& draw) {
                                       stencil_reference, stride, vertex_count, vertex_view_bytes, vertex_buffer,
                                       index_count, base_vertex_location, index_bytes, vulkan, upload_address,
                                       ring_address, upload, base_offset, vs_offset, ps_offset, shared_rel,
-                                      palette_rel, loop_rel, index_rel, shared_offset](plume::RenderCommandList& list,
-                                                                                   uint64_t generation) {
+                                      palette_rel, loop_rel, index_rel, shared_offset, staged,
+                                      staged_into](plume::RenderCommandList& list, uint64_t generation) {
+        if (staged) {
+            swap_words_into({staged_into, Impl::staged_words * 4},
+                            {reinterpret_cast<const uint8_t*>(staged), Impl::staged_words * 4});
+            impl->staged_consumed.fetch_add(1, std::memory_order_release);
+        }
         const std::array<plume::RenderInputSlot, 2> slots{plume::RenderInputSlot(0, stride),
                                                            plume::RenderInputSlot(zero_slot, 0)};
         const bool fresh = impl->bound_generation != generation;

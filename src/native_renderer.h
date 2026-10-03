@@ -75,6 +75,12 @@ struct NativeDraw {
     // Vulkan: the pixel shader's specialization constant (constant_id 0),
     // set in its pipeline; D3D12 links it into the shader instead.
     uint32_t pixel_spec_constants = 0;
+    // Or, when not null, both constant arrays still as the guest holds them
+    // (big-endian words, vertex then pixel) in the slot constant_staging()
+    // gave: the render thread swaps them into the upload ring, so the guest's
+    // thread neither swaps nor writes them to write-combined memory. The two
+    // arrays below are then not read.
+    const uint32_t* staged_constants = nullptr;
     std::array<uint32_t, 1024> vertex_constants{};  // 256 float4
     std::array<uint32_t, 1024> pixel_constants{};
     // Vertex loop constants i0..i15, unpacked to int4 (see loop_constants.h).
@@ -120,6 +126,11 @@ public:
     // extent is not tracked), including on whole-allocation frees.
     void invalidate(uint32_t physical, uint32_t size);
     void draw(const NativeDraw& draw);
+    // Where the next draw may copy its 2048 constant words unswapped
+    // (NativeDraw::staged_constants), or empty when constants are swapped on
+    // the calling thread: no render thread, a constant reuse experiment, or
+    // SFR_DEFERRED_CONSTANTS=0. Valid until that draw() returns.
+    std::span<uint32_t> constant_staging();
     // Called once at initial device setup, before the title's first frame.
     // Compiles known recipes while the presentation thread remains responsive.
     void prepare_pipelines();

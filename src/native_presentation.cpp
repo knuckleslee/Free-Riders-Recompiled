@@ -1200,6 +1200,7 @@ void NativePresentation::record(const std::function<void(plume::RenderCommandLis
 void NativePresentation::flush() { impl_->flush(); }
 
 uint64_t NativePresentation::list_generation() const { return impl_->list_generation; }
+bool NativePresentation::records_asynchronously() const { return impl_->render_thread_enabled(); }
 
 void NativePresentation::set_gpu_wait(std::function<void(const std::function<void()>&)> wait) {
     Impl::gpu_wait() = std::move(wait);

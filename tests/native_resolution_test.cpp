@@ -322,6 +322,58 @@ float4 shaderMain(float4 position : SV_Position, float red : TEXCOORD0) : SV_Tar
                     "ring switches and capacity flush preserve rendered constants");
     }
     environment("SFR_CONSTANT_UPLOAD_REUSE", "0");
+    // Staged constants (NativeDraw::staged_constants): copied as the guest holds
+    // them (big-endian) and swapped by the render thread into each draw's own
+    // ring offset. Run with SFR_RENDER_THREAD=1 (native_resolution_render_thread).
+    {
+        sfr::NativePresentation presentation(graphics, 16, 16);
+        sfr::NativeRenderer renderer(graphics, presentation);
+        if (renderer.constant_staging().empty()) {
+            require(!presentation.records_asynchronously(), "constants are staged whenever a render thread records");
+            std::cerr << "STAGED_CONSTANTS skipped: no render thread\n";
+        } else {
+            sfr::NativeClear clear{};
+            clear.color = true;
+            presentation.clear(clear);
+            sfr::NativeDraw draw;
+            draw.vertex_count = 3; draw.vertex_shader = vertex.get(); draw.pixel_shader = pixel.get();
+            // Never read while staged constants are given.
+            draw.vertex_constants.back() = draw.pixel_constants.front() = std::bit_cast<uint32_t>(1.0f);
+            const auto stage = [&](float red, float green) {
+                const auto staging = renderer.constant_staging();
+                require(staging.size() == 2048, "a staging slot holds both stages");
+                std::fill(staging.begin(), staging.end(), 0u);
+                staging[1023] = __builtin_bswap32(std::bit_cast<uint32_t>(red));
+                staging[1024] = __builtin_bswap32(std::bit_cast<uint32_t>(green));
+                draw.staged_constants = staging.data();
+            };
+            const std::array<float,4> red{0.25f,0.75f,0.25f,0.75f}, green{0.875f,0.5f,0.5f,0.875f};
+            for (int column = 0; column < 4; ++column) {
+                stage(red[column], green[column]);
+                presentation.set_raster_state({0,0,16,16}, {column*4,0,(column+1)*4,16});
+                renderer.draw(draw);
+            }
+            const auto pixels = presentation.readback_color();
+            for (uint32_t y=0; y<16; ++y) for (uint32_t x=0; x<16; ++x) {
+                const size_t at = (y*16+x)*4;
+                require(std::abs(int(pixels[at+2])-int(red[x/4]*255+0.5f))<=1 &&
+                        std::abs(int(pixels[at+1])-int(green[x/4]*255+0.5f))<=1,
+                        "the render thread swaps each draw's staged constants into its own offset");
+            }
+            // More draws than staging slots, without a flush in between: slots
+            // are reused only after the render thread has released them.
+            presentation.set_raster_state({0,0,16,16}, {0,0,16,16});
+            for (int i = 0; i < 5000; ++i) {
+                stage(i % 2 ? 0.25f : 0.75f, i % 3 ? 0.5f : 0.875f);
+                renderer.draw(draw);
+            }
+            const auto wrapped = presentation.readback_color();
+            for (size_t at=0; at<wrapped.size(); at+=4)  // draw 4999: red 0.25, green 0.5
+                require(std::abs(int(wrapped[at+2])-64)<=1 && std::abs(int(wrapped[at+1])-128)<=1,
+                        "staging slots wrap without handing out one still in use");
+            std::cerr << "STAGED_CONSTANTS passed\n";
+        }
+    }
 }
 // Preserve depth/stencil across color-only work before attempting to remove
 // unused attachments from those draws. This is also an oracle for alternating
