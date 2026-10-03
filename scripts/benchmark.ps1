@@ -98,6 +98,13 @@ $settings = @{
     'sequential'   = @{ SFR_HOST_PROCESSORS = 'sequential' }   # the old processor order
     'serial'       = @{ SFR_PARALLEL_WORKER = '0' }            # guest threads one at a time
     'all'          = @{ SFR_PARALLEL_WORKER = 'all' }          # every guest thread in parallel (experimental)
+    # all, with the 2 ms start delay of new guest threads off: the condition that made the
+    # job-dispatch R6025 reproducible (docs/job-dispatch.md); a stall is reported after 60 s
+    'all-stress'   = @{ SFR_PARALLEL_WORKER = 'all'; SFR_THREAD_START_DELAY_US = '0'; SFR_HANG_SECONDS = '60' }
+    # World Grand Prix, the ring's first item, by ok alone (exploratory: the screens after it
+    # are not documented); with every guest thread in parallel, where the R6025 was first seen
+    'gp-all'       = @{ SFR_PARALLEL_WORKER = 'all'; SFR_HANG_SECONDS = '60';
+                        SFR_SAY = 'ok@580,ok@930,ok@1280,start@1630,ok@1830,ok@2230,ok@2630,ok@3030,ok@3430,ok@3830,ok@4230,ok@4630,ok@5030,ok@5430,ok@5830' }
     'skip-draws'   = @{ SFR_SKIP_DRAWS = '1' }                 # the game without its drawing: the ceiling
     'render-every-2' = @{ SFR_RENDER_EVERY = '2' }             # a race drawn every other frame
     'no-vertex-cache' = @{ SFR_VERTEX_CACHE = '0' }

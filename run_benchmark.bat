@@ -6,6 +6,7 @@ rem   run_benchmark.bat exe          two builds, sfr_cpu_diagnostic_a.exe agains
 rem   run_benchmark.bat ctrl         a control: the same build twice, to see what the method says about no difference
 rem   run_benchmark.bat rt           the render thread on (the default) against off, the same build
 rem   run_benchmark.bat par          every guest thread in parallel (SFR_PARALLEL_WORKER=all) against the default
+rem   run_benchmark.bat stab         many short races with every guest thread in parallel (all, and all without the thread start delay), 10 each
 rem   run_benchmark.bat dc           deferred draws and the index cache (the defaults) against each turned off, 8 rounds
 rem   run_benchmark.bat prof         where the main thread spends a race (2 runs); send profile.md
 rem   run_benchmark.bat speed 8      the same with 8 rounds
@@ -32,6 +33,11 @@ if /i "%MODE%"=="prof" (
 if /i "%MODE%"=="dc" (
     set CONFIGS=baseline,no-deferred-draws,no-deferred-constants,no-index-cache
     if "%2"=="" set REPEATS=8
+)
+if /i "%MODE%"=="stab" (
+    set CONFIGS=all,all-stress
+    set EXTRA=-AfterSay 1500 -TimeoutMinutes 10
+    if "%2"=="" set REPEATS=10
 )
 if /i "%MODE%"=="par" (
     set CONFIGS=baseline,all
