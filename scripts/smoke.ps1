@@ -3,7 +3,7 @@
 #
 #   run_benchmark.bat smoke            (or scripts\smoke.ps1)
 #
-# baseline, every sfr_cpu_diagnostic_<a-e>.exe in out\build\host, the main core
+# baseline, every sfr_cpu_diagnostic_<a-f>.exe in out\build\host, the main core
 # reserved, every guest thread in parallel (with and without the main core, and
 # the stress setting) and the profile. scripts\smoke_check.py then says for each
 # whether it ended normally, reached and drew the race, and left the marks of
@@ -25,12 +25,12 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $host_dir = Join-Path $root 'out/build/host'
-$builds = @(foreach ($letter in 'a', 'b', 'c', 'd', 'e') {
+$builds = @(foreach ($letter in 'a', 'b', 'c', 'd', 'e', 'f') {
     if (Test-Path -LiteralPath (Join-Path $host_dir "sfr_cpu_diagnostic_$letter.exe")) { $letter }
 })
 $inAll = @($builds | ForEach-Object { "exe-$_-all" })
 if ($AllOnly) {
-    if (-not $inAll.Count) { throw 'No sfr_cpu_diagnostic_<a-e>.exe in out\build\host' }
+    if (-not $inAll.Count) { throw 'No sfr_cpu_diagnostic_<a-f>.exe in out\build\host' }
     $configs = $inAll
 } else {
     $configs = @('baseline') + @($builds | ForEach-Object { "exe-$_" }) +

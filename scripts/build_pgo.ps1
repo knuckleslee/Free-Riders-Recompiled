@@ -18,13 +18,22 @@
 # The profile belongs to the sources it was recorded from: -DiagnosticDirectory
 # must be the same for training and step 4 (another, e.g. out/recomp/diagnostic-fast
 # from scripts\build_ab.ps1, trains and builds that one instead).
+#
+# The fastest build there is, f: the generated code of d (fast path, registers in
+# locals, checkpoints only at loops) guided by races with every guest thread in
+# parallel, the way it is meant to run (run_benchmark.bat fastest):
+#   scripts\build_ab.ps1 -Local -Loops        # if out\recomp\diagnostic-loops is not there yet
+#   scripts\build_pgo.ps1 -DiagnosticDirectory out/recomp/diagnostic-loops -Letter f -TrainAll
+# Each letter keeps its own profile (out\pgo\sfr.profdata for e, sfr-<letter>.profdata
+# for the others) and its own pgo.txt (pgo-<letter>.txt).
 param([int]$Jobs = 4, [string]$DiagnosticDirectory = 'out/recomp/diagnostic',
-      [ValidateRange(1, 10)][int]$TrainRuns = 2, [switch]$SkipTraining)
+      [ValidateRange(1, 10)][int]$TrainRuns = 2, [switch]$SkipTraining,
+      [ValidatePattern('^[e-z]$')][string]$Letter = 'e', [switch]$TrainAll)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $host_dir = Join-Path $root 'out/build/host'
 $pgo = Join-Path $root 'out/pgo'
-$profileData = Join-Path $pgo 'sfr.profdata'
+$profileData = Join-Path $pgo $(if ($Letter -eq 'e') { 'sfr.profdata' } else { "sfr-$Letter.profdata" })
 $profdata = Join-Path $env:ProgramFiles 'LLVM\bin\llvm-profdata.exe'
 if (-not (Test-Path -LiteralPath $profdata)) { throw "Missing $profdata (it comes with the LLVM installer that has clang-cl)" }
 if (-not (Test-Path -LiteralPath (Join-Path $host_dir 'sfr_cpu_diagnostic.exe'))) { throw 'Build the game first (scripts\build_tools.ps1 -Diagnostic): the training runs from out\build\host.' }
@@ -41,7 +50,7 @@ if (-not $SkipTraining) {
     Get-ChildItem -LiteralPath $pgo -Filter 'sfr-*.profraw' | Remove-Item -Force
     $env:LLVM_PROFILE_FILE = Join-Path $pgo 'sfr-%p.profraw'
     try {
-        & (Join-Path $PSScriptRoot 'benchmark.ps1') -Configs 'pgo-train' -Repeats $TrainRuns -NoWarmup -TimeoutMinutes 40 -Out (Join-Path $pgo ('train-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+        & (Join-Path $PSScriptRoot 'benchmark.ps1') -Configs $(if ($TrainAll) { 'pgo-train-all' } else { 'pgo-train' }) -Repeats $TrainRuns -NoWarmup -TimeoutMinutes 40 -Out (Join-Path $pgo ('train-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
     } finally {
         Remove-Item Env:LLVM_PROFILE_FILE -ErrorAction SilentlyContinue
     }
@@ -58,12 +67,12 @@ if (-not $SkipTraining) {
 Write-Output 'Step 4/4: optimised build'
 & (Join-Path $PSScriptRoot 'build_tools.ps1') -Jobs $Jobs -Diagnostic -DiagnosticDirectory $DiagnosticDirectory -BuildDirectory 'out\build\pgo-use' -PgoUse $profileData
 if ($LASTEXITCODE) { throw 'Profile-guided build failed.' }
-$copy = Join-Path $host_dir 'sfr_cpu_diagnostic_e.exe'
+$copy = Join-Path $host_dir "sfr_cpu_diagnostic_$Letter.exe"
 Copy-Item -Force -LiteralPath (Join-Path $root 'out/build/pgo-use/sfr_cpu_diagnostic.exe') -Destination $copy
 $commit = (& git -C $root rev-parse --short HEAD).Trim()
 $dirty = if (& git -C $root status --porcelain) { 'DIRTY (uncommitted changes)' } else { 'clean' }
 $lines = @("commit=$commit tree=$dirty", "built=$(Get-Date -Format s)",
-           "exe-e=profile-guided from $DiagnosticDirectory profile=$((Get-Item -LiteralPath $profileData).LastWriteTime.ToString('s')) size=$((Get-Item -LiteralPath $copy).Length)")
-$lines | Set-Content -LiteralPath (Join-Path $host_dir 'pgo.txt') -Encoding ASCII
+           "exe-$Letter=profile-guided from $DiagnosticDirectory$(if ($TrainAll) { ' (trained in all mode)' }) profile=$((Get-Item -LiteralPath $profileData).LastWriteTime.ToString('s')) size=$((Get-Item -LiteralPath $copy).Length)")
+$lines | Set-Content -LiteralPath (Join-Path $host_dir $(if ($Letter -eq 'e') { 'pgo.txt' } else { "pgo-$Letter.txt" })) -Encoding ASCII
 $lines | ForEach-Object { Write-Output $_ }
-Write-Output 'Next: scripts\make_benchmark_kit.ps1 -UpdateOnly -Destination X:\sfr-benchmark-kit, then run_benchmark.bat pgo on the i5'
+Write-Output "Next: scripts\make_benchmark_kit.ps1 -UpdateOnly -Destination X:\sfr-benchmark-kit, then run_benchmark.bat $(if ($Letter -eq 'f') { 'fastest' } else { 'pgo' }) on the i5"

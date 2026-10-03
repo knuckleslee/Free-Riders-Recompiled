@@ -78,6 +78,23 @@ c（兩者）在同一輪比較。三次完整建置，時間約平常的三倍�
 在 Linux 上用小程式驗證過整個流程（產生、合併、使用，並確認到達上限時的寫入與結束時的寫入落在同一個檔案）；
 clang-cl 接受這兩個旗標。**遊戲本身尚未建置或執行過。**
 
+### 最快的組合：f
+
+e 只疊在原樣的碼上，用來單獨量 PGO。要拿來玩的最快版本是 f：d 的碼（快速路徑、暫存器放區域變數、
+檢查點只留在迴圈），用 `all` 模式的比賽訓練（`-TrainAll`，訓練設定 `pgo-train-all`），因為它就是要在
+`all` 模式下跑：
+
+```
+scripts\build_ab.ps1 -Local -Loops      # out\recomp\diagnostic-loops 還不在時
+scripts\build_pgo.ps1 -DiagnosticDirectory out/recomp/diagnostic-loops -Letter f -TrainAll
+scripts\make_benchmark_kit.ps1 -UpdateOnly -Destination X:\sfr-benchmark-kit
+```
+
+每個字母有自己的計數檔（e 是 `sfr.profdata`，其他是 `sfr-<字母>.profdata`）和 `pgo-<字母>.txt`，
+做 f 不會蓋掉 e。在 i5 上：`run_benchmark.bat fastest` 用 f 和 `all` 模式玩（`play.ps1 -Build f -All`）；
+`run_benchmark.bat fastest-bench` 拿現在玩的方式（一般版、`cores`）對 `exe-f-all`，5 輪。
+`all` 模式還沒做長時間穩定性測試（night 的 stab），玩的時候若停住或卡住，改回一般方式玩。
+
 ## 函式入口
 
 每個函式入口原本都存兩個執行緒區域變數：名稱和位址。

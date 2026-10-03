@@ -140,6 +140,7 @@ $settings = @{
     'exe-c'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_c.exe' }   # a third build (scripts/build_ab.ps1 -Local)
     'exe-d'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_d.exe' }   # checkpoints only at loops (scripts/build_ab.ps1 -Loops)
     'exe-e'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_e.exe' }   # profile-guided (scripts/build_pgo.ps1)
+    'exe-f'        = @{ SFR_EXE = 'sfr_cpu_diagnostic_f.exe' }   # profile-guided from d's code (build_pgo.ps1 -Letter f)
     # the same builds with every guest thread in parallel, the mode most likely to become the default
     'exe-a-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_a.exe'; SFR_PARALLEL_WORKER = 'all' }
     'exe-b-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe'; SFR_PARALLEL_WORKER = 'all' }
@@ -147,6 +148,9 @@ $settings = @{
     'exe-d-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_d.exe'; SFR_PARALLEL_WORKER = 'all' }
     'exe-e-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_e.exe'; SFR_PARALLEL_WORKER = 'all' }
     'pgo-train'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_train.exe' }   # its training runs, started by scripts/build_pgo.ps1
+    'pgo-train-all' = @{ SFR_EXE = 'sfr_cpu_diagnostic_train.exe'; SFR_PARALLEL_WORKER = 'all' }   # build_pgo.ps1 -TrainAll
+    # the fastest build (build_pgo.ps1 -Letter f: d's code, guided in all mode), as it is meant to run
+    'exe-f-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_f.exe'; SFR_PARALLEL_WORKER = 'all' }
     # the same file as exe-b under another name: a control that shows what comparing a program with itself gives
     'exe-b-again'  = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe' }
     # samples the main thread every millisecond while the race flag is set
