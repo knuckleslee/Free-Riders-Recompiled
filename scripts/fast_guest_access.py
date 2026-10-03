@@ -48,7 +48,8 @@ def main():
     shutil.copytree(args.source, args.destination)
     functions = files = 0
     for path in sorted(args.destination.glob('ppc_recomp.*.cpp')):
-        text = path.read_text(encoding='utf-8', newline='')
+        with open(path, encoding='utf-8', newline='') as source:
+            text = source.read()
         changed, count = transform(text)
         if count:
             path.write_text(changed, encoding='utf-8', newline='')

@@ -86,7 +86,8 @@ def main():
     shutil.copytree(args.source, args.destination)
     kept = removed = files = 0
     for path in sorted(args.destination.glob('ppc_recomp.*.cpp')):
-        text = path.read_text(encoding='utf-8', newline='')
+        with open(path, encoding='utf-8', newline='') as source:
+            text = source.read()
         changed, k, r = transform(text)
         kept += k
         removed += r

@@ -23,13 +23,13 @@ $root = Split-Path -Parent $PSScriptRoot
 $host_dir = Join-Path $root 'out/build/host'
 $plain = Join-Path $root 'out/recomp/diagnostic'
 $fast = Join-Path $root 'out/recomp/diagnostic-fast'
-$local = Join-Path $root 'out/recomp/diagnostic-local'
+$localDir = Join-Path $root 'out/recomp/diagnostic-local'
 $fastlocal = Join-Path $root 'out/recomp/diagnostic-fastlocal'
-$loops = Join-Path $root 'out/recomp/diagnostic-loops'
+$loopsDir = Join-Path $root 'out/recomp/diagnostic-loops'
 if (-not (Test-Path -LiteralPath (Join-Path $plain 'report.json'))) { throw "Missing $plain (the checked generated code: scripts\generate_diagnostic.py)" }
 # Made again every time from the generated code here now; only a folder one of
 # these tools made (it leaves its report) is removed.
-foreach ($made in @(@($fast, 'fast_report.json'), @($local, 'localize_report.json'), @($fastlocal, 'fast_report.json'), @($loops, 'loops_report.json'))) {
+foreach ($made in @(@($fast, 'fast_report.json'), @($localDir, 'localize_report.json'), @($fastlocal, 'fast_report.json'), @($loopsDir, 'loops_report.json'))) {
     if (Test-Path -LiteralPath $made[0]) {
         if (-not (Test-Path -LiteralPath (Join-Path $made[0] $made[1]))) { throw "$($made[0]) was not made by this script's tools: move it away." }
         Remove-Item -Recurse -Force -LiteralPath $made[0]
@@ -40,16 +40,16 @@ $py = if (Get-Command py -ErrorAction SilentlyContinue) { 'py' } else { 'python'
 if ($LASTEXITCODE -ne 0) { throw 'fast_guest_access.py failed.' }
 $variants = @(,@('b', 'out/recomp/diagnostic-fast', 'fast path'))
 if ($Local) {
-    & $py (Join-Path $PSScriptRoot 'localize_registers.py') $plain $local
+    & $py (Join-Path $PSScriptRoot 'localize_registers.py') $plain $localDir
     if ($LASTEXITCODE -ne 0) { throw 'localize_registers.py failed.' }
-    & $py (Join-Path $PSScriptRoot 'fast_guest_access.py') $local $fastlocal
+    & $py (Join-Path $PSScriptRoot 'fast_guest_access.py') $localDir $fastlocal
     if ($LASTEXITCODE -ne 0) { throw 'fast_guest_access.py (on the localized copy) failed.' }
     $variants = @(,@('c', 'out/recomp/diagnostic-fastlocal', 'registers in locals and fast path')) + $variants
 }
 if ($Loops) {
     # On top of the most changed build so far: d differs from it only there.
     $under = $variants[0]
-    & $py (Join-Path $PSScriptRoot 'loop_checkpoints.py') (Join-Path $root $under[1]) $loops
+    & $py (Join-Path $PSScriptRoot 'loop_checkpoints.py') (Join-Path $root $under[1]) $loopsDir
     if ($LASTEXITCODE -ne 0) { throw 'loop_checkpoints.py failed.' }
     $variants = @(,@('d', 'out/recomp/diagnostic-loops', "$($under[2]), checkpoints only at loops")) + $variants
 }
