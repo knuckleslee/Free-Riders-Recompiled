@@ -304,7 +304,10 @@ function Start-Run([string]$name, [int]$repeat) {
     [ordered]@{ executable = $program; sha256 = (Get-BenchmarkSha256 $program); settings = $effective } |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Out "$label.json") -Encoding UTF8
     $arguments = @("`"$image`"", "`"$assets`"", '--game-region=ntsc-us')
-    return Start-Process -FilePath $program -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -PassThru `
+    # -NoNewWindow, not -WindowStyle Hidden: the hidden start applies to the first
+    # ShowWindow of the process, which is the game window itself, and a race
+    # presented to a hidden window is not the race a player sees.
+    return Start-Process -FilePath $program -ArgumentList $arguments -WorkingDirectory $root -NoNewWindow -PassThru `
         -RedirectStandardError $log -RedirectStandardOutput (Join-Path $Out "$label.out")
 }
 
