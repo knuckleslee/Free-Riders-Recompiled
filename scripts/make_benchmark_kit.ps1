@@ -75,7 +75,7 @@ function Copy-Into([string]$relative, [string[]]$exclude = @()) {
 
 Copy-Into 'run_benchmark.bat' | Out-Null
 try { (& git -C $root rev-parse --short HEAD 2>$null) | Set-Content -LiteralPath (Join-Path $Destination 'commit.txt') -Encoding ASCII } catch { }
-foreach ($file in 'benchmark.ps1', 'benchmark_summary.py', 'profile_summary.py', 'anonymize_benchmark.py', 'benchmark_report.py', 'play.ps1', 'night.ps1') {
+foreach ($file in 'benchmark.ps1', 'benchmark_summary.py', 'profile_summary.py', 'anonymize_benchmark.py', 'benchmark_report.py', 'play.ps1', 'night.ps1', 'smoke.ps1', 'smoke_check.py') {
     Copy-Into "scripts/$file" | Out-Null
 }
 # The linker map stays: the profile setting names functions with it (profile_summary.py)

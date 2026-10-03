@@ -14,6 +14,7 @@ rem   run_benchmark.bat stab         many short races with every guest thread in
 rem   run_benchmark.bat dc           deferred draws and the index cache (the defaults) against each turned off, 8 rounds
 rem   run_benchmark.bat prof         where the main thread spends a race (2 runs); send profile.md
 rem   run_benchmark.bat core         the main thread's core kept for it alone, with the default and with all, 5 rounds
+rem   run_benchmark.bat smoke        one short race with every build and setting, to check each works first; send the -smoke.md
 rem   run_benchmark.bat night        all of pgo, stab, exe, core and prof in a row (5 to 6 hours); send the -overview.zip
 rem   run_benchmark.bat speed 8      the same with 8 rounds
 rem   run_benchmark.bat author       the original's own unconfirmed switches: constant upload reuse, priority, host timing
@@ -81,6 +82,7 @@ echo The benchmark plays the game by itself. Do not use this PC and close other 
 echo until it says it is done. Mode %MODE%, %REPEATS% rounds.
 echo.
 if /i "%MODE%"=="night" goto night
+if /i "%MODE%"=="smoke" goto smoke
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\benchmark.ps1" -SkipBuildCheck -Configs %CONFIGS% -Repeats %REPEATS% %EXTRA% %GAMEARGS%
 echo.
 set LATEST=
@@ -94,6 +96,19 @@ goto done
 :found
 echo Send this file: out\bench\%LATEST%
 if not "%LATEST:-part=%"=="%LATEST%" echo It is one of several parts (each under 29 MB): send ALL the files out\bench\%LATEST:~0,15%-shareable-part*.zip
+explorer /select,"%~dp0out\bench\%LATEST%"
+goto done
+:smoke
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\smoke.ps1" %GAMEARGS%
+set LATEST=
+for /f "delims=" %%Z in ('dir /b /o-d "out\bench\smoke-*-smoke.md" 2^>nul') do (
+    set LATEST=%%Z
+    goto smokefound
+)
+echo No smoke.md was made (Python is probably missing); send the newest out\bench\smoke-* -shareable zip instead.
+goto done
+:smokefound
+echo Send this file: out\bench\%LATEST%
 explorer /select,"%~dp0out\bench\%LATEST%"
 goto done
 :night
