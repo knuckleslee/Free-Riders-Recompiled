@@ -33,7 +33,7 @@ if (-not (Test-Path -LiteralPath (Join-Path (Join-Path $root $DiagnosticDirector
 if (-not $SkipTraining) {
     Write-Output 'Step 1/4: instrumented build'
     & (Join-Path $PSScriptRoot 'build_tools.ps1') -Jobs $Jobs -Diagnostic -DiagnosticDirectory $DiagnosticDirectory -BuildDirectory 'out\build\pgo-train' -PgoGenerate
-    if ($LASTEXITCODE -ne 0) { throw 'Instrumented build failed.' }
+    if ($LASTEXITCODE) { throw 'Instrumented build failed.' }
     Copy-Item -Force -LiteralPath (Join-Path $root 'out/build/pgo-train/sfr_cpu_diagnostic.exe') -Destination (Join-Path $host_dir 'sfr_cpu_diagnostic_train.exe')
 
     Write-Output "Step 2/4: training, $TrainRuns race(s); leave the PC alone until it ends"
@@ -57,7 +57,7 @@ if (-not $SkipTraining) {
 
 Write-Output 'Step 4/4: optimised build'
 & (Join-Path $PSScriptRoot 'build_tools.ps1') -Jobs $Jobs -Diagnostic -DiagnosticDirectory $DiagnosticDirectory -BuildDirectory 'out\build\pgo-use' -PgoUse $profileData
-if ($LASTEXITCODE -ne 0) { throw 'Profile-guided build failed.' }
+if ($LASTEXITCODE) { throw 'Profile-guided build failed.' }
 $copy = Join-Path $host_dir 'sfr_cpu_diagnostic_e.exe'
 Copy-Item -Force -LiteralPath (Join-Path $root 'out/build/pgo-use/sfr_cpu_diagnostic.exe') -Destination $copy
 $commit = (& git -C $root rev-parse --short HEAD).Trim()
