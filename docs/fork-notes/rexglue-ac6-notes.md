@@ -14,3 +14,9 @@
 
 在 i5 跑一次 `profile`，看主執行緒的時間落在哪：若遊戲的 memcpy／memset 類函式明顯，`[rexcrt]` 式的替換是最便宜的一步
 （每個函式一個 hook）；若散在大量生成碼，暫存器區域變數與記憶體存取方式才是方向。
+
+## GoldenEye-Recomp
+
+`SunJaycy/GoldenEye-Recomp` `fdee4d1`（2026-06-18），同樣用 ReXGlue（SDK 0.8.0.0），約 3000 行，多半是遊戲修補、
+滑鼠、線上、後製效果與除錯用的看門狗。效能方面沒有可借的東西：XBLA 版本身負擔輕，FPS 上限是 SDK 的 `max_fps`，
+專案裡的難題是 GPU 指令處理器卡住與時脈欄位沒人更新（`src/ge_hooks.cpp` 的 `ge_dbg_now`），屬於正確性。
