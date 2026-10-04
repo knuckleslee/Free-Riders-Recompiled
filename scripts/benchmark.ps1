@@ -217,11 +217,15 @@ $base = [ordered]@{
 if ($Stretch) {
     # Loading takes seconds, not presents (a PC presents hundreds of frames a second while the title
     # loads), so a word keyed by presents may be said before the menu listens, and a limit by presents
-    # may come before the race. Each word waits for P/ReferenceFps seconds; the run ends AfterSay
-    # presents after the last word, with the present limit left as a backstop.
+    # may come before the race. Each word waits for P/ReferenceFps seconds (and the title asks for none
+    # while it loads); the run ends AfterSay presents after the last word, so it is counted from the race.
+    # No limit counts from the start: a slow load presents its loading screen over a thousand times a
+    # second and used up 60000 before the race (2 of 6 runs of one build, 2026-10-04). The backstop is
+    # the wall clock instead, 10 minutes unless -TimeoutMinutes says otherwise (a run takes 3 or 4).
     $base['SFR_SAY_REFERENCE_FPS'] = "$ReferenceFps"
     $base['SFR_PRESENT_LIMIT_AFTER_SAY'] = "$AfterSay"
-    if (-not $PSBoundParameters.ContainsKey('PresentLimit')) { $base['SFR_PRESENT_LIMIT'] = '60000' }
+    if (-not $PSBoundParameters.ContainsKey('PresentLimit')) { $base['SFR_PRESENT_LIMIT'] = '0' }
+    if (-not $PSBoundParameters.ContainsKey('TimeoutMinutes')) { $TimeoutMinutes = 10 }
 }
 if (-not $Out) { $Out = Join-Path $root ('out/bench/' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff')) }
 $Out = [IO.Path]::GetFullPath($Out)
