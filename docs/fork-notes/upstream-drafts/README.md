@@ -16,3 +16,13 @@ Sent on 2026-10-04:
 - `pr-4-title-and-body-guest-fast-path.md`: the guest-memory fast path, branch `pr/guest-fast-path` on
   v0.4.7 (`e6fc52e`). Timed on plain v0.4.7 (+15%, 6/6 rounds). **Opened** on 2026-10-04 as
   https://github.com/YuutaTsubasa/Free-Riders-Recompiled/pull/38
+
+Outcome (2026-10-05, the maintainer's reply on #33, which is now closed):
+
+- #38 was integrated through #41 on v0.5.0. v0.5.0 reads guest memory directly by default
+  (`SFR_DIRECT_MEMORY=ON`), so the fast path now speeds up only the checked build (about 12% there).
+- v0.5.0 makes `SFR_PARALLEL_WORKER=all` the default and replaces the global permit with per-subsystem
+  locks (the Unleashed/Marathon model); the render thread is on for every backend. AYN Thor: about 25 to 50 fps.
+- This fork's later experiments on v0.4.7 (`SFR_PARALLEL_MAIN`, `pr-gen`, `ceil`, `free`) are superseded by it.
+  New measurements belong in a new issue, on v0.5.0.
+
