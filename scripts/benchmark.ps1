@@ -158,6 +158,8 @@ $settings = @{
     # the same builds with every guest thread in parallel, the mode most likely to become the default
     'exe-a-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_a.exe'; SFR_PARALLEL_WORKER = 'all' }
     'exe-b-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe'; SFR_PARALLEL_WORKER = 'all' }
+    # all, and the title's main thread detached too (SFR_PARALLEL_MAIN, experiment): run_benchmark.bat free
+    'exe-b-free'   = @{ SFR_EXE = 'sfr_cpu_diagnostic_b.exe'; SFR_PARALLEL_WORKER = 'all'; SFR_PARALLEL_MAIN = '1' }
     'exe-c-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_c.exe'; SFR_PARALLEL_WORKER = 'all' }
     'exe-d-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_d.exe'; SFR_PARALLEL_WORKER = 'all' }
     'exe-e-all'    = @{ SFR_EXE = 'sfr_cpu_diagnostic_e.exe'; SFR_PARALLEL_WORKER = 'all' }

@@ -416,6 +416,13 @@ static const ParallelGuests parallel_worker = [] {
     const std::string_view mode(text);
     return mode == "all" ? ParallelGuests::all : mode == "cores" ? ParallelGuests::cores : ParallelGuests::job_worker;
 }();
+static const bool parallel_main = [] {
+    const char* const text = std::getenv("SFR_PARALLEL_MAIN");
+    if (!text || *text == '0') return false;
+    if (parallel_worker == ParallelGuests::all) return true;
+    std::cerr << "PARALLEL_MAIN ignored: it needs SFR_PARALLEL_WORKER=all\n";
+    return false;
+}();
 static constexpr unsigned guest_processors = 6;
 static std::array<std::unique_ptr<GuestExecution>, guest_processors> core_executions;
 std::array<GuestExecution::Timing, 7> take_guest_execution_timings() {
@@ -4345,6 +4352,18 @@ int main(int argc, char** argv) {
             auto permit = execution.enter(1);
             sfr::execution_permit = permit.get();
             sfr::current_context = &ctx;
+            // SFR_PARALLEL_MAIN=1 (experiment, with SFR_PARALLEL_WORKER=all):
+            // the title's main thread runs detached like the other guests,
+            // taking the permit only for imports, hooks and exclusive computed
+            // words, so it no longer queues behind them for its own guest code.
+            if (sfr::parallel_main) {
+                std::cerr << "PARALLEL_WORKER guest_id=1 processor=0 main=1\n";
+                sfr::guest_thread_state.entry.parallel = true;
+                sfr::guest_thread_state.entry.permit_detached = permit->detached_flag();
+                sfr::GuestMemory::concurrent_reader = true;
+                sfr::GuestMemory::slow_access_hook = sfr::parallel_slow_access;
+                permit->detach();
+            }
             sfr::refresh_entry_observation();
             std::cerr << "GUEST_HOST_THREAD guest_id=1 tid=" << sfr::host_thread_id() << " worker=0x824d22f0\n";
 #ifdef _WIN32
