@@ -141,6 +141,11 @@ $settings = @{
     'priority'       = @{ SFR_GUEST_SATURATED_PRIORITY = '1' } # saturated guests' host priority raised (off by default)
     'no-host-timing' = @{ SFR_HOST_TIMING = '0' }              # the host timer and speed policy left alone (on by default)
     'audio-parallel' = @{ SFR_AUDIO_PARALLEL = '5' }          # the audio pump beside the main thread on console processor 5 (off by default)
+    # the render thread (docs/render-thread.md) with an empty queue: baseline yields 2000 times
+    # before it sleeps; these sleep at once, after 100 yields, or record on the main thread
+    'render-spin-0'    = @{ SFR_RENDER_SPIN = '0' }
+    'render-spin-100'  = @{ SFR_RENDER_SPIN = '100' }
+    'no-render-thread' = @{ SFR_RENDER_THREAD = '0' }
     # Two executables of different builds in out/build/host, compared in the same
     # rounds: copy each build's sfr_cpu_diagnostic.exe to sfr_cpu_diagnostic_a.exe
     # and sfr_cpu_diagnostic_b.exe. SFR_EXE names the file and is not passed on to the game.
