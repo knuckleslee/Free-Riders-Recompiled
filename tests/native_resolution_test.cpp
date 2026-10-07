@@ -224,6 +224,52 @@ float4 shaderMain() : SV_Target {
     }
 }
 
+// index_cache: a list unwritten for a frame is kept in its own buffer, drawn
+// from there, told apart from other decodings of the same bytes, and dropped
+// once the title stores to it.
+void index_cache_readback(sfr::NativeGraphics& graphics, const fs::path& directory, const std::string& header) {
+    const auto vertex = compile(graphics, directory, header, R"(
+float4 shaderMain(uint id : SV_VertexID) : SV_Position {
+ float2 p[3] = {float2(-1,-1), float2(-1,3), float2(3,-1)};
+ return float4(p[id],0.5,1);
+})", true);
+    const auto pixel = compile(graphics, directory, header, R"(
+float4 shaderMain() : SV_Target { return float4(0,1,0,1); }
+)", false);
+    environment("SFR_RENDER_SCALE", "100");
+    sfr::GuestMemory memory;
+    constexpr uint32_t physical = 0x100000, address = 0xA0100000;
+    memory.map(address, 0x10000);
+    sfr::NativePresentation presentation(graphics, 16, 16);
+    sfr::NativeRenderer renderer(graphics, presentation);
+    constexpr uint64_t bytes = 6, key = 1;
+    const std::array<uint32_t, 3> indices{0, 1, 2};
+    require(!renderer.index_cache(memory, physical, bytes, key).storable, "a new index list is only watched");
+    require(!renderer.store_indices(indices, 0, 2), "nothing is kept without a storable miss");
+    memory.advance_write_epoch();
+    auto cached = renderer.index_cache(memory, physical, bytes, key);
+    require(cached.storable && !cached.buffer, "a list unwritten for a frame may be kept");
+    const plume::RenderBuffer* const buffer = renderer.store_indices(indices, 0, 2);
+    require(buffer != nullptr, "the decoded list gets a buffer");
+    cached = renderer.index_cache(memory, physical, bytes, key);
+    require(cached.buffer == buffer && cached.count == 3 && cached.lowest == 0 && cached.highest == 2,
+            "the kept list is found with its count and range");
+    require(!renderer.index_cache(memory, physical, bytes, key + 4).buffer,
+            "another decoding of the same bytes is kept apart");
+    sfr::NativeDraw draw;
+    draw.vertex_count = 3; draw.vertex_shader = vertex.get(); draw.pixel_shader = pixel.get();
+    draw.index_buffer = buffer; draw.index_count = 3;
+    draw.shared.sampler[0] = renderer.sampler({});
+    presentation.set_raster_state({0,0,16,16}, {0,0,16,16});
+    sfr::NativeClear clear{}; clear.color = true; presentation.clear(clear);
+    renderer.draw(draw);
+    const auto pixels = presentation.readback_color();
+    for (size_t at=0; at<pixels.size(); at+=4)
+        require(pixels[at+1] == 255 && pixels[at+3] == 255, "a draw takes its indices from the kept buffer");
+    memory.store<uint16_t>(address, 0x0100);
+    require(!renderer.index_cache(memory, physical, bytes, key).buffer, "a store drops the kept list");
+}
+
 void constant_upload_readback(sfr::NativeGraphics& graphics, const fs::path& directory, const std::string& header) {
     const auto vertex = compile(graphics, directory, header, R"(
 #ifndef __spirv__
@@ -454,6 +500,7 @@ uint g_SpecConstants() { return 0; }
     depth_stencil_preservation_readback(graphics, directory, header);
     resolved_allocation_reuse_readback(graphics, directory, header);
     batched_texture_readback(graphics, directory, header);
+    index_cache_readback(graphics, directory, header);
     const auto vertex = compile(graphics, directory, header, R"(
 float4 shaderMain(uint id : SV_VertexID) : SV_Position {
  float2 p[3] = {float2(-1,-1), float2(-1,3), float2(3,-1)};

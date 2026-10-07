@@ -331,6 +331,7 @@ static uint64_t frame_stream_bytes=0;
 // Where the indexed draw's time goes, timed rather than sampled: reading the
 // index buffer, turning a cut strip into triangles, and gathering vertices.
 static uint64_t frame_indices=0;
+static uint32_t frame_index_cached_draws=0;  // drawn from index_cache buffers
 static double frame_index_ms=0, frame_cut_ms=0, frame_gather_ms=0;
 // The rest of a draw: its two constant blocks, and recording it.
 static double frame_constants_ms=0, frame_record_ms=0, frame_draw_ms=0;
@@ -578,7 +579,8 @@ SFR_GRAPHICS_HOST_HOOK(sub_824E65A0) {
               << " vertex_swap_ms=" << frame_vertex_swap_ms << " vertex_repack_ms=" << frame_vertex_repack_ms
               << " biggest=" << frame_biggest_draw
               << " streams=" << frame_streams.size() << " stream_bytes=" << frame_stream_bytes
-              << " indices=" << frame_indices << " index_ms=" << frame_index_ms << " cut_ms=" << frame_cut_ms
+              << " indices=" << frame_indices << " index_cached_draws=" << frame_index_cached_draws
+              << " index_ms=" << frame_index_ms << " cut_ms=" << frame_cut_ms
               << " gather_ms=" << frame_gather_ms << " constants_ms=" << frame_constants_ms
               << " record_ms=" << frame_record_ms << " draw_ms=" << frame_draw_ms
               << " pipelines=" << pipeline_work.created << " pipeline_ms=" << pipeline_work.milliseconds
@@ -631,6 +633,7 @@ SFR_GRAPHICS_HOST_HOOK(sub_824E65A0) {
     frame_streams.clear();
     frame_stream_bytes=0;
     frame_indices=0;
+    frame_index_cached_draws=0;
     frame_index_ms=frame_cut_ms=frame_gather_ms=0;
     frame_constants_ms=frame_record_ms=frame_draw_ms=0;
     ++sfr::present_count;
@@ -706,7 +709,8 @@ SFR_GRAPHICS_HOST_HOOK(sub_824E65A0) {
 static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint32_t primitive,
                         uint32_t count, std::span<const uint8_t> vertices, uint32_t stride,
                         std::span<const uint32_t> indices={}, int32_t base_vertex_location=0,
-                        uint32_t source_physical=0) {
+                        uint32_t source_physical=0, const plume::RenderBuffer* index_buffer=nullptr,
+                        uint32_t index_count=0) {
     auto& memory=*sfr::active_memory;
     if(skip_draws() || !rendering_this_frame()) return;
     // Everything a draw costs beside reading its indices and vertices.
@@ -767,7 +771,9 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
     frame_biggest_draw=(std::max)(frame_biggest_draw,count);
     draw.vertex_count=count;
     draw.stride=stride;
-    draw.indices=indices;
+    draw.indices=index_buffer?std::span<const uint32_t>{}:indices;
+    draw.index_buffer=index_buffer;
+    draw.index_count=index_buffer?index_count:0;
     draw.base_vertex_location=base_vertex_location;
 
     // Declaration elements (+11992: object with count at +24, 12-byte elements at +52).
@@ -1378,6 +1384,33 @@ SFR_GRAPHICS_HOOK(sub_824F56E8) {
     if(frame_metrics && frame_streams.emplace(stream.physical,stream.size).second) frame_stream_bytes+=stream.size;
     const uint32_t restart=wide?0xFFFFFFFFu:0xFFFFu;
     const bool restart_enabled=graphics().render_state().primitive_restart_enabled.value_or(false);
+    // SFR_INDEX_CACHE=1: an index list unchanged since the last frame is drawn
+    // from its decoded copy (NativeRenderer::index_cache), neither read nor
+    // converted again. Only lists drawn as a block of the stream are kept.
+    static const bool index_cache=[]{ const char* t=std::getenv("SFR_INDEX_CACHE"); return t && *t!='0'; }();
+    bool store_indices=false;
+    if(index_cache) {
+        const uint64_t key=uint64_t(base_vertex)<<2|uint64_t(wide)<<1|uint64_t(restart_enabled);
+        const auto cached=graphics().renderer().index_cache(memory,index_physical+start*index_size,
+                                                            uint64_t(count)*index_size,key);
+        store_indices=cached.storable;
+        if(cached.buffer) {
+            if(cached.highest>=vertex_count)
+                throw sfr::RuntimeStop("native-draw",cached.highest,"index exceeds the stream 0 vertex buffer");
+            const uint64_t block=uint64_t(cached.highest-cached.lowest+1);
+            const uint64_t used=block*stream.stride;
+            if(block<=4*uint64_t(cached.count) && used<=0x800000) {
+                frame_indices+=count;
+                ++frame_index_cached_draws;
+                const uint32_t used_address=sfr::NativeRenderer::guest_address(memory,stream.physical+cached.lowest*stream.stride,used);
+                memory.check(used_address,used);
+                const std::span<const uint8_t> window(memory.base()+used_address,size_t(used));
+                native_draw(ctx,0x824F56E8,device,primitive,uint32_t(block),window,stream.stride,{},-int32_t(cached.lowest),
+                            stream.physical+cached.lowest*stream.stride,cached.buffer,cached.count);
+                return;
+            }
+        }
+    }
     // One range check for the whole index buffer, then plain big-endian reads:
     // a per-access check for each of a million indices a frame costs more than
     // reading them (docs/performance.md).
@@ -1414,8 +1447,9 @@ SFR_GRAPHICS_HOOK(sub_824F56E8) {
             // moves the block back to the start.
             const std::span<const uint8_t> window(used_bytes,size_t(used));
             if(frame_metrics) frame_gather_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-copy_start).count();
+            const plume::RenderBuffer* const kept=store_indices?graphics().renderer().store_indices(order,lowest,highest):nullptr;
             native_draw(ctx,0x824F56E8,device,primitive,uint32_t(block),window,stream.stride,order,-int32_t(lowest),
-                        stream.physical+lowest*stream.stride);
+                        stream.physical+lowest*stream.stride,kept,uint32_t(order.size()));
             return;
         }
     }

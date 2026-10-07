@@ -138,6 +138,7 @@ $settings = @{
     # opt-in or default-on experiments whose effect on frame time is not established
     # (docs/handheld-performance-2026-09-30.md): each differs from baseline by one switch
     'constant-reuse' = @{ SFR_CONSTANT_UPLOAD_REUSE = '1' }    # exact 4 KiB constant uploads reused (off by default)
+    'index-cache'    = @{ SFR_INDEX_CACHE = '1' }              # unchanged index lists kept decoded from frame to frame (off by default)
     'priority'       = @{ SFR_GUEST_SATURATED_PRIORITY = '1' } # saturated guests' host priority raised (off by default)
     'no-host-timing' = @{ SFR_HOST_TIMING = '0' }              # the host timer and speed policy left alone (on by default)
     'audio-parallel' = @{ SFR_AUDIO_PARALLEL = '5' }          # the audio pump beside the main thread on console processor 5 (off by default)
