@@ -151,11 +151,14 @@ $settings = @{
     # samples the main thread every millisecond during the race (from present
     # 12200); profile.md names the functions (scripts/profile_summary.py)
     'profile'      = @{ SFR_MAIN_PROFILE = '1'; SFR_PROFILE_AFTER = '12200' }
+    # the same without drawing: profile.md then compares the two in ms a frame, which
+    # names where the time goes that drawing nothing saves beyond the drawing timers
+    'profile-skip-draws' = @{ SFR_MAIN_PROFILE = '1'; SFR_PROFILE_AFTER = '12200'; SFR_SKIP_DRAWS = '1' }
 }
 # "a,b" arrives as one string through powershell -File.
 $Configs = @($Configs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 if (-not $Configs.Count -or @($Configs | Select-Object -Unique).Count -ne $Configs.Count) { throw 'Provide distinct configurations.' }
-if (-not $AllowDiagnosticRendering -and @($Configs | Where-Object { $_ -in 'skip-draws','render-every-2' }).Count) {
+if (-not $AllowDiagnosticRendering -and @($Configs | Where-Object { $_ -in 'skip-draws','render-every-2','profile-skip-draws' }).Count) {
     throw 'Omitted drawing is a diagnostic ceiling, not gameplay performance; use -AllowDiagnosticRendering explicitly.'
 }
 foreach ($name in $Configs) {
@@ -470,7 +473,8 @@ function Get-RaceFps([string]$logPath) {
 
 # The profile's addresses are named by the linker's map of this build.
 $map = Join-Path $host_dir 'sfr_cpu_diagnostic.map'
-if ($Configs -contains 'profile' -and (Test-Path -LiteralPath $map)) { Copy-Item -LiteralPath $map -Destination $Out }
+$profiled = @($Configs | Where-Object { $_ -like 'profile*' }).Count -gt 0
+if ($profiled -and (Test-Path -LiteralPath $map)) { Copy-Item -LiteralPath $map -Destination $Out }
 
 # The py launcher first: 'python' may be the Microsoft Store's stand-in,
 # which runs nothing.
@@ -479,7 +483,7 @@ foreach ($python in @(@('py', '-3'), @('python'))) {
     if (-not (Get-Command $python[0] -ErrorAction SilentlyContinue)) { continue }
     $rest = @($python | Select-Object -Skip 1)
     & $python[0] @rest $summary $Out --skip $Skip
-    if ($Configs -contains 'profile') { & $python[0] @rest (Join-Path $PSScriptRoot 'profile_summary.py') $Out }
+    if ($profiled) { & $python[0] @rest (Join-Path $PSScriptRoot 'profile_summary.py') $Out }
     if (Test-Path -LiteralPath (Join-Path $Out 'summary.md')) { break }
 }
 # What goes to someone else is a copy without the user name, the language and

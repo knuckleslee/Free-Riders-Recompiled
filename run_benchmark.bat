@@ -6,6 +6,7 @@ rem   run_benchmark.bat exe          two builds, sfr_cpu_diagnostic_a.exe agains
 rem   run_benchmark.bat report       what limits this PC: as it is, without drawing, at half resolution, 4 rounds; send the -shareable zip
 rem   run_benchmark.bat full         the whole report, unattended (about 45 minutes): what each part costs and the limit (Time Attack), then a race's frame rate; one zip to send
 rem   run_benchmark.bat parts        what each part costs a frame: no drawing, half resolution, no sound output, main thread unpinned, 4 rounds (add solo)
+rem   run_benchmark.bat profile      where the main thread's time goes, with and without drawing, 2 rounds (add solo); profile.md stays on this PC
 rem   run_benchmark.bat ctrl         a control: the same build twice, to see what the method says about no difference
 rem   run_benchmark.bat speed 8      the same with 8 rounds
 rem   run_benchmark.bat author       the original's own unconfirmed switches: constant upload reuse, priority, host timing
@@ -33,6 +34,11 @@ if /i "%MODE%"=="parts" (
     set CONFIGS=baseline,skip-draws,render-50,no-audio,main-unpinned
     set EXTRA=-AllowDiagnosticRendering
     if "%2"=="" set REPEATS=4
+)
+if /i "%MODE%"=="profile" (
+    set CONFIGS=profile,profile-skip-draws
+    set EXTRA=-AllowDiagnosticRendering
+    if "%2"=="" set REPEATS=2
 )
 if /i "%MODE%"=="full" if "%2"=="" set REPEATS=4
 if /i "%MODE%"=="pipelines" (

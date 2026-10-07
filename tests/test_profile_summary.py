@@ -45,6 +45,33 @@ class ProfileSummaryTest(unittest.TestCase):
             self.assertIn('| `sfr::NativeRenderer::draw` | native_renderer.cpp.obj | 20.00% |', table)
             self.assertIn('| `helper` | diagnostic_main.cpp.obj | 5.00% |', table)
 
+    def test_compares_settings_in_ms_a_frame(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / 'sfr_cpu_diagnostic.map').write_text(MAP, encoding='utf-8')
+            def presents(ms):
+                # Two presents before the sampled range, then 100 at ms apart.
+                return ''.join(f'NATIVE_PRESENT source=0x0 frame={12198 + i} racing=1 seconds={(i * ms / 1000):.4f}\n'
+                               for i in range(103))
+            for run in (1, 2):
+                # 20 ms a frame: half the game's code, half the renderer
+                (Path(directory) / f'profile-{run}.log').write_text(
+                    presents(20) + 'HOST_PROFILE rva=0x1010 50\nHOST_PROFILE rva=0x2400 50\n', encoding='utf-8')
+                # 12 ms without drawing: the renderer is gone, the game's code alone
+                (Path(directory) / f'profile-skip-draws-{run}.log').write_text(
+                    presents(12) + 'HOST_PROFILE rva=0x1010 60\n', encoding='utf-8')
+            (Path(directory) / 'baseline-1.log').write_text(presents(20), encoding='utf-8')
+            self.assertEqual(profile.profiled_settings(directory), ['profile', 'profile-skip-draws'])
+            self.assertAlmostEqual(profile.frame_ms(directory, 'profile'), 20.0, places=3)
+            symbols = profile.read_map(Path(directory) / 'sfr_cpu_diagnostic.map')
+            table = profile.compare(directory, ['profile', 'profile-skip-draws'], symbols)
+            self.assertIn('| 類別 | profile ms | profile-skip-draws ms | profile − profile-skip-draws |', table)
+            self.assertIn('| **整格** | 20.00 | 12.00 | +8.00 |', table)
+            self.assertIn('| 畫圖 | 10.00 | 0.00 | +10.00 |', table)
+            self.assertIn('| 遊戲生成碼 | 10.00 | 12.00 | -2.00 |', table)
+            self.assertIn('| `sfr::NativeRenderer::draw` (native_renderer.cpp.obj) | 10.00 | 0.00 | +10.00 |', table)
+            # Largest saving first
+            self.assertLess(table.index('| 畫圖 |'), table.index('| 遊戲生成碼 |'))
+
 
 if __name__ == '__main__':
     unittest.main()
