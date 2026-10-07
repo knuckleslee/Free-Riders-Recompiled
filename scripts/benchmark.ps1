@@ -172,6 +172,13 @@ foreach ($name in $Configs) {
     }
 }
 
+# The profile names functions from the linker map of this very build. A kit leaves it
+# out (make_benchmark_kit.ps1): without it every sample would read as outside the
+# program, so stop before the runs rather than after them.
+if (@($Configs | Where-Object { $_ -like 'profile*' }).Count -and -not (Test-Path -LiteralPath (Join-Path $host_dir 'sfr_cpu_diagnostic.map'))) {
+    throw "The profile settings need sfr_cpu_diagnostic.map beside the program: copy it from the build PC's out\build\host (the same build) into $host_dir."
+}
+
 # Two different executables must differ: copying the same build under both names compares
 # a program with itself (a whole benchmark wasted before anyone notices).
 $exeFiles = @{}
