@@ -36,6 +36,13 @@ param(
     # in out/renderdoc. Open it in RenderDoc to see a frame's draws.
     [switch]$RenderDoc,
     [string]$RenderDocCmd = '',
+    # Borderless full screen from the start (SFR_FULLSCREEN; Alt+Enter toggles in the game).
+    [switch]$Fullscreen,
+    # Records the race with scripts/pmc-record.ps1 (the CPU's counters, and
+    # PresentMon when it is found) while the game runs: run this from an
+    # administrator PowerShell, and press Enter there once a race is under way.
+    [switch]$Record,
+    [int]$RecordSeconds = 60,
     [string]$Log = 'out/play.log' # the runtime's trace output
 )
 $ErrorActionPreference = 'Stop'
@@ -83,6 +90,13 @@ $env:SFR_AUDIO = if ($Mute) { '0' } else { '1' }
 # Signed in, so the game keeps records in save/ (docs/saves.md).
 $env:SFR_PROFILE = '1'
 if ($SkipMovies) { $env:SFR_SKIP_MOVIES = '1' } else { Remove-Item Env:SFR_SKIP_MOVIES -ErrorAction SilentlyContinue }
+if ($Fullscreen) { $env:SFR_FULLSCREEN = '1' } else { Remove-Item Env:SFR_FULLSCREEN -ErrorAction SilentlyContinue }
+if ($Record) {
+    if ($RenderDoc) { throw '-Record and -RenderDoc together would measure RenderDoc too: use one at a time' }
+    $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $admin) { throw '-Record needs an administrator PowerShell (the CPU counters are a kernel trace)' }
+}
 # The process's processor limit is inherited by cmd and the game, which
 # places its threads within it. Logical processors 2k and 2k+1 are taken to
 # share a core when there are more of them than cores.
@@ -104,11 +118,28 @@ try {
     if ($Pinned) { $limits += 'main thread pinned' }
     if ($Uncapped) { $limits += 'no fps cap' }
     if ($RenderDoc) { $limits += 'through RenderDoc (F12 captures a frame into out/renderdoc)' }
+    if ($Fullscreen) { $limits += 'full screen' }
     if ($limits.Count) { Write-Output ('Playing with ' + ($limits -join ', ')) }
     Write-Output "Running; trace output goes to $Log. Close the game window or press Ctrl+C here to stop."
     # cmd redirects the trace: PowerShell 5.1 would turn each stderr line into an error record.
-    & $env:COMSPEC /d /c "$launch out/recomp/image-loader private/assets --game-region=$Region 2> `"$Log`""
-    if ($LASTEXITCODE -ne 0) { Write-Output "Stopped (exit $LASTEXITCODE); the last lines of $Log say why." }
+    $command = "$launch out/recomp/image-loader private/assets --game-region=$Region 2> `"$Log`""
+    if ($Record) {
+        # The game in a process of its own, so that this window can record it.
+        $game = Start-Process -FilePath $env:COMSPEC -ArgumentList '/d', '/c', "`"$command`"" -PassThru -WindowStyle Hidden
+        $waited = 0
+        while (-not (Get-Process -Name sfr_cpu_diagnostic -ErrorAction SilentlyContinue) -and -not $game.HasExited -and $waited -lt 120) {
+            Start-Sleep -Seconds 1; ++$waited
+        }
+        if (-not $game.HasExited) {
+            Write-Output 'Get into a race, then come back here and press Enter.'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'pmc-record.ps1') -Process sfr_cpu_diagnostic.exe -Seconds $RecordSeconds -OutDir (Join-Path $root 'out/pmc')
+        }
+        $game.WaitForExit()
+        if ($game.ExitCode -ne 0) { Write-Output "Stopped (exit $($game.ExitCode)); the last lines of $Log say why." }
+    } else {
+        & $env:COMSPEC /d /c $command
+        if ($LASTEXITCODE -ne 0) { Write-Output "Stopped (exit $LASTEXITCODE); the last lines of $Log say why." }
+    }
     # The races played, as the benchmark counts them: frames with racing=1, less
     # the first 300 of each race (the countdown).
     $times = [System.Collections.Generic.List[double]]::new()
