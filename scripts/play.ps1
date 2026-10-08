@@ -38,9 +38,10 @@ param(
     [string]$RenderDocCmd = '',
     # Borderless full screen from the start (SFR_FULLSCREEN; Alt+Enter toggles in the game).
     [switch]$Fullscreen,
-    # Records the race with scripts/pmc-record.ps1 (the CPU's counters, and
-    # PresentMon when it is found) while the game runs: run this from an
-    # administrator PowerShell, and press Enter there once a race is under way.
+    # Records a race with scripts/pmc-record.ps1 (the CPU's counters, and
+    # PresentMon when it is found): run this from an administrator PowerShell.
+    # Recording starts by itself once a race has run past its countdown (the
+    # trace's racing=1 frames) and lasts RecordSeconds; a beep marks each end.
     [switch]$Record,
     [int]$RecordSeconds = 60,
     [string]$Log = 'out/play.log' # the runtime's trace output
@@ -130,9 +131,26 @@ try {
         while (-not (Get-Process -Name sfr_cpu_diagnostic -ErrorAction SilentlyContinue) -and -not $game.HasExited -and $waited -lt 120) {
             Start-Sleep -Seconds 1; ++$waited
         }
+        # Watch the trace for a race past its countdown: 360 frames in a row with racing=1.
+        $logPath = if ([System.IO.Path]::IsPathRooted($Log)) { $Log } else { Join-Path $root $Log }
+        $reader = $null
+        $racing = 0
+        if (-not $game.HasExited) { Write-Output 'Recording starts by itself once a race is under way; just play.' }
+        while (-not $game.HasExited -and $racing -lt 360) {
+            if (-not $reader) {
+                if (Test-Path -LiteralPath $logPath) {
+                    $stream = [System.IO.FileStream]::new($logPath, 'Open', 'Read', 'ReadWrite')
+                    $reader = [System.IO.StreamReader]::new($stream)
+                } else { Start-Sleep -Milliseconds 500; continue }
+            }
+            $line = $reader.ReadLine()
+            if ($null -eq $line) { Start-Sleep -Milliseconds 200; continue }
+            if ($line.StartsWith('NATIVE_PRESENT ')) { if ($line.Contains(' racing=1')) { ++$racing } else { $racing = 0 } }
+        }
+        if ($reader) { $reader.Dispose() }
         if (-not $game.HasExited) {
-            Write-Output 'Get into a race, then come back here and press Enter.'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'pmc-record.ps1') -Process sfr_cpu_diagnostic.exe -Seconds $RecordSeconds -OutDir (Join-Path $root 'out/pmc')
+            Write-Output 'A race is under way: recording.'
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'pmc-record.ps1') -Process sfr_cpu_diagnostic.exe -Seconds $RecordSeconds -OutDir (Join-Path $root 'out/pmc') -NoPrompt
         }
         $game.WaitForExit()
         if ($game.ExitCode -ne 0) { Write-Output "Stopped (exit $($game.ExitCode)); the last lines of $Log say why." }

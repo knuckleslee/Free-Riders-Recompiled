@@ -11,7 +11,9 @@ param(
     # PresentMon's console build (PresentMon-*-x64.exe); found next to this script or in X:\ when not given
     [string]$PresentMon = '',
     [string]$OutDir = (Join-Path $PSScriptRoot 'pmc-out'),
-    [switch]$Keep
+    [switch]$Keep,
+    # Starts at once and asks nothing (play.ps1 -Record starts it when a race is under way)
+    [switch]$NoPrompt
 )
 $ErrorActionPreference = 'Continue'  # native tools' stderr must not stop the script
 $invariant = [Globalization.CultureInfo]::InvariantCulture
@@ -258,8 +260,10 @@ public static class PmcSummary
 
 Write-Host ''
 Write-Host "After Enter you have $Delay s to switch back to the game, then $Seconds s are recorded. Keep playing; stay out of menus and pause." -ForegroundColor Cyan
-Read-Host 'Press Enter when ready' | Out-Null
-for ($i = $Delay; $i -gt 0; --$i) { Write-Host "  recording in $i s"; Start-Sleep -Seconds 1 }
+if (-not $NoPrompt) {
+    Read-Host 'Press Enter when ready' | Out-Null
+    for ($i = $Delay; $i -gt 0; --$i) { Write-Host "  recording in $i s"; Start-Sleep -Seconds 1 }
+}
 
 & $xperf -on PROC_THREAD+LOADER+CSWITCH -pmc UnhaltedCoreCyclesFixed,InstructionsRetiredFixed CSWITCH -BufferSize 1024 -MinBuffers 256 -MaxBuffers 2048
 if ($LASTEXITCODE -ne 0) { throw "xperf -on failed ($LASTEXITCODE). Restart the PC and try again." }
@@ -304,7 +308,7 @@ if ($rows.Count -gt 1) {
     foreach ($column in 'MsBetweenPresents', 'MsCPUBusy', 'MsCPUWait', 'MsGPUBusy', 'MsGPUWait', 'MsGPUTime', 'MsInPresentAPI') {
         $frameLines += "| $column | $(& $describe $column) |"
     }
-} else {
+} elseif (-not $NoPrompt) {
     $typed = Read-Host 'PresentMon recorded no frames. If the game showed its fps, type the average (or just press Enter)'
     $value = 0.0
     if ($typed -and [double]::TryParse($typed, [Globalization.NumberStyles]::Float, $invariant, [ref]$value)) { $fps = $value }
@@ -316,7 +320,7 @@ Write-Host 'Converting and analysing the trace; this can take a few minutes...'
 if ($LASTEXITCODE -ne 0) { throw "xperf -i failed ($LASTEXITCODE)." }
 [PmcSummary]::Run($dump, $Process, $summary, $fps) | Out-Null
 
-$draws = Read-Host 'Draw calls in a frame counted with RenderDoc, if any (or just press Enter)'
+$draws = if ($NoPrompt) { '' } else { Read-Host 'Draw calls in a frame counted with RenderDoc, if any (or just press Enter)' }
 $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1)
 $extra = $frameLines + @('', '## This PC', '', "- CPU: $($cpu.Name.Trim()) ($($cpu.NumberOfCores) cores, $($cpu.NumberOfLogicalProcessors) threads)")
 if ($draws) { $extra += "- Draw calls a frame (RenderDoc): $draws" }
