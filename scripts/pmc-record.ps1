@@ -1,4 +1,4 @@
-﻿# pmc-record.ps1: records a game's threads on this PC with the CPU's own
+# pmc-record.ps1: records a game's threads on this PC with the CPU's own
 # counters (cycles and instructions at every context switch) and, with
 # PresentMon, its frames, then writes a short summary that names no other
 # program. Run it in an administrator PowerShell while the game is running:
@@ -18,24 +18,24 @@ $invariant = [Globalization.CultureInfo]::InvariantCulture
 
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $admin) { throw '請用「以系統管理員身分執行」開啟的 PowerShell 執行這個腳本。' }
+if (-not $admin) { throw 'Run this from an administrator PowerShell.' }
 
 $xperf = @(
     "${env:ProgramFiles(x86)}\Windows Kits\10\Windows Performance Toolkit\xperf.exe",
     "$env:ProgramFiles\Windows Kits\10\Windows Performance Toolkit\xperf.exe"
 ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if (-not $xperf) { throw '找不到 xperf.exe：請先安裝 Windows ADK 的 Windows Performance Toolkit。' }
+if (-not $xperf) { throw 'xperf.exe not found: install the Windows Performance Toolkit from the Windows ADK.' }
 
 if (-not $PresentMon) {
     $PresentMon = @(Get-ChildItem -Path $PSScriptRoot, 'X:\' -Filter 'PresentMon*.exe' -ErrorAction SilentlyContinue |
         Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName)[0]
 }
-if ($PresentMon -and -not (Test-Path -LiteralPath $PresentMon)) { throw "找不到 $PresentMon" }
-if ($PresentMon) { Write-Host "PresentMon：$PresentMon" } else { Write-Host '找不到 PresentMon，只錄 CPU 部分（fps 可以最後手動輸入）。' -ForegroundColor Yellow }
+if ($PresentMon -and -not (Test-Path -LiteralPath $PresentMon)) { throw "$PresentMon not found" }
+if ($PresentMon) { Write-Host "PresentMon: $PresentMon" } else { Write-Host 'PresentMon not found: recording the CPU only (the fps can be typed at the end).' -ForegroundColor Yellow }
 
 $name = [IO.Path]::GetFileNameWithoutExtension($Process)
 if (-not (Get-Process -Name $name -ErrorAction SilentlyContinue)) {
-    Write-Host "$Process 還沒有在執行。請先開遊戲、進入實際遊玩的畫面，再執行這個腳本。" -ForegroundColor Yellow
+    Write-Host "$Process is not running. Start the game and get into actual play first." -ForegroundColor Yellow
     exit 1
 }
 
@@ -257,12 +257,12 @@ public static class PmcSummary
 & $xperf -stop 2>$null | Out-Null
 
 Write-Host ''
-Write-Host "按 Enter 後有 $Delay 秒讓你切回遊戲，接著錄 $Seconds 秒。錄的時候請正常遊玩，不要停在選單或暫停畫面。" -ForegroundColor Cyan
-Read-Host '準備好了按 Enter' | Out-Null
-for ($i = $Delay; $i -gt 0; --$i) { Write-Host "  $i 秒後開始錄製"; Start-Sleep -Seconds 1 }
+Write-Host "After Enter you have $Delay s to switch back to the game, then $Seconds s are recorded. Keep playing; stay out of menus and pause." -ForegroundColor Cyan
+Read-Host 'Press Enter when ready' | Out-Null
+for ($i = $Delay; $i -gt 0; --$i) { Write-Host "  recording in $i s"; Start-Sleep -Seconds 1 }
 
 & $xperf -on PROC_THREAD+LOADER+CSWITCH -pmc UnhaltedCoreCyclesFixed,InstructionsRetiredFixed CSWITCH -BufferSize 1024 -MinBuffers 256 -MaxBuffers 2048
-if ($LASTEXITCODE -ne 0) { throw "xperf -on 失敗（$LASTEXITCODE）。重新開機後再試一次。" }
+if ($LASTEXITCODE -ne 0) { throw "xperf -on failed ($LASTEXITCODE). Restart the PC and try again." }
 $presentMonProcess = $null
 if ($PresentMon) {
     $presentMonProcess = Start-Process -FilePath $PresentMon -PassThru -WindowStyle Minimized -ArgumentList @(
@@ -271,13 +271,13 @@ if ($PresentMon) {
 
 [console]::beep(880, 200)
 for ($i = $Seconds; $i -gt 0; --$i) {
-    Write-Progress -Activity '錄製中，請繼續遊玩' -SecondsRemaining $i -PercentComplete (100 * ($Seconds - $i) / $Seconds)
+    Write-Progress -Activity 'Recording: keep playing' -SecondsRemaining $i -PercentComplete (100 * ($Seconds - $i) / $Seconds)
     Start-Sleep -Seconds 1
 }
-Write-Progress -Activity '錄製中' -Completed
+Write-Progress -Activity 'Recording' -Completed
 & $xperf -d $etl
 [console]::beep(660, 300)
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $etl)) { throw "停止錄製失敗（$LASTEXITCODE）。" }
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $etl)) { throw "Stopping the trace failed ($LASTEXITCODE)." }
 if ($presentMonProcess -and -not $presentMonProcess.WaitForExit(30000)) { $presentMonProcess.Kill() }
 
 # Frames from PresentMon: only this game's rows.
@@ -305,18 +305,18 @@ if ($rows.Count -gt 1) {
         $frameLines += "| $column | $(& $describe $column) |"
     }
 } else {
-    $typed = Read-Host 'PresentMon 沒有錄到畫面。如果遊戲畫面上有顯示 FPS，輸入這段時間大約的平均值（沒有就直接按 Enter）'
+    $typed = Read-Host 'PresentMon recorded no frames. If the game showed its fps, type the average (or just press Enter)'
     $value = 0.0
     if ($typed -and [double]::TryParse($typed, [Globalization.NumberStyles]::Float, $invariant, [ref]$value)) { $fps = $value }
     if ($fps -gt 0) { $frameLines += '', "- FPS seen in the game (typed): $typed" }
 }
 
-Write-Host '正在把錄製檔轉成文字並分析，可能要幾分鐘……'
+Write-Host 'Converting and analysing the trace; this can take a few minutes...'
 & $xperf -i $etl -o $dump -a dumper
-if ($LASTEXITCODE -ne 0) { throw "xperf -i 失敗（$LASTEXITCODE）。" }
+if ($LASTEXITCODE -ne 0) { throw "xperf -i failed ($LASTEXITCODE)." }
 [PmcSummary]::Run($dump, $Process, $summary, $fps) | Out-Null
 
-$draws = Read-Host '如果用 RenderDoc 數過一格有幾次繪製（draw call），輸入數字（沒有就直接按 Enter）'
+$draws = Read-Host 'Draw calls in a frame counted with RenderDoc, if any (or just press Enter)'
 $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1)
 $extra = $frameLines + @('', '## This PC', '', "- CPU: $($cpu.Name.Trim()) ($($cpu.NumberOfCores) cores, $($cpu.NumberOfLogicalProcessors) threads)")
 if ($draws) { $extra += "- Draw calls a frame (RenderDoc): $draws" }
@@ -326,5 +326,5 @@ if (-not $Keep) { Remove-Item -LiteralPath $etl, $dump, $frames -ErrorAction Sil
 Write-Host ''
 Get-Content -LiteralPath $summary | Write-Host
 Write-Host ''
-Write-Host "摘要在：$summary" -ForegroundColor Green
-Write-Host '把這個 .md 檔傳給我就好；它只有這個遊戲自己的執行緒和畫面，沒有其他程式的名稱。'
+Write-Host "Summary: $summary" -ForegroundColor Green
+Write-Host 'Send this .md file: it has this game's own threads and frames only, and names no other program.'
