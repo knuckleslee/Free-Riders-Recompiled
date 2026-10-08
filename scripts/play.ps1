@@ -31,12 +31,29 @@ param(
     # faster than real time).
     [switch]$Uncapped,
     [string]$Region = 'ntsc-us',
+    # Started through RenderDoc's renderdoccmd (from RenderDoc's folder, or the
+    # path given with -RenderDocCmd): F12 in the game captures a frame, saved
+    # in out/renderdoc. Open it in RenderDoc to see a frame's draws.
+    [switch]$RenderDoc,
+    [string]$RenderDocCmd = '',
     [string]$Log = 'out/play.log' # the runtime's trace output
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $root 'out/build/host/sfr_cpu_diagnostic.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw "Build first: scripts\build_tools.ps1 -Diagnostic (missing $exe)" }
+$launch = "`"$exe`""
+if ($RenderDoc) {
+    if (-not $RenderDocCmd) {
+        $RenderDocCmd = @("$env:ProgramFiles\RenderDoc\renderdoccmd.exe", "${env:ProgramFiles(x86)}\RenderDoc\renderdoccmd.exe") |
+            Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    }
+    if (-not $RenderDocCmd -or -not (Test-Path -LiteralPath $RenderDocCmd)) { throw 'renderdoccmd.exe not found: install RenderDoc or pass -RenderDocCmd <path>' }
+    $captures = Join-Path $root 'out/renderdoc'
+    New-Item -ItemType Directory -Force -Path $captures | Out-Null
+    # The game inherits this process's environment, so every setting below reaches it.
+    $launch = "`"$RenderDocCmd`" capture -w -d `"$root`" -c `"$(Join-Path $captures 'sfr')`" `"$exe`""
+}
 foreach ($path in 'out/recomp/image-loader', 'private/assets') {
     if (-not (Test-Path -LiteralPath (Join-Path $root $path))) { throw "Missing $path (see README)" }
 }
@@ -86,10 +103,11 @@ try {
     if ($Unpinned) { $limits += 'main thread unpinned' }
     if ($Pinned) { $limits += 'main thread pinned' }
     if ($Uncapped) { $limits += 'no fps cap' }
+    if ($RenderDoc) { $limits += 'through RenderDoc (F12 captures a frame into out/renderdoc)' }
     if ($limits.Count) { Write-Output ('Playing with ' + ($limits -join ', ')) }
     Write-Output "Running; trace output goes to $Log. Close the game window or press Ctrl+C here to stop."
     # cmd redirects the trace: PowerShell 5.1 would turn each stderr line into an error record.
-    & $env:COMSPEC /d /c "`"$exe`" out/recomp/image-loader private/assets --game-region=$Region 2> `"$Log`""
+    & $env:COMSPEC /d /c "$launch out/recomp/image-loader private/assets --game-region=$Region 2> `"$Log`""
     if ($LASTEXITCODE -ne 0) { Write-Output "Stopped (exit $LASTEXITCODE); the last lines of $Log say why." }
     # The races played, as the benchmark counts them: frames with racing=1, less
     # the first 300 of each race (the countdown).
