@@ -122,6 +122,7 @@ $settings = @{
     'render-50'    = @{ SFR_RENDER_SCALE = '50' }              # half the rendering resolution: how much is the GPU's (run_benchmark.bat report)
     'no-vertex-cache' = @{ SFR_VERTEX_CACHE = '0' }
     'no-gpu-pipeline' = @{ SFR_GPU_PIPELINE = '0' }
+    'no-index-cache' = @{ SFR_INDEX_CACHE = '0' }               # indices decoded and copied for every draw again, as before (Issue #65)
     'no-audio'     = @{ SFR_AUDIO = '0' }                      # no sound sent to the PC's output (the game still mixes it): what the output costs
     # the main thread left to Windows instead of pinned to the first core, and the other way round.
     # The default pins it with six or more logical processors and leaves it unpinned with fewer
@@ -138,7 +139,6 @@ $settings = @{
     # opt-in or default-on experiments whose effect on frame time is not established
     # (docs/handheld-performance-2026-09-30.md): each differs from baseline by one switch
     'constant-reuse' = @{ SFR_CONSTANT_UPLOAD_REUSE = '1' }    # exact 4 KiB constant uploads reused (off by default)
-    'index-cache'    = @{ SFR_INDEX_CACHE = '1' }              # unchanged index lists kept decoded from frame to frame (off by default)
     # how much a frame depends on the shared L3 (SFR_CACHE_HOG_KB, diagnostic_main.cpp): a thread keeps
     # that many KB of its own in the caches; hog-64 fits its core's L2 and takes only the core, so compare
     # the larger ones with it, not with baseline

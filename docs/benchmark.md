@@ -104,7 +104,7 @@ them at 0, and the summary says so.
 `-Configs` takes names from the table in `scripts/benchmark.ps1`; each changes
 one environment variable of the baseline. Among them: `no-suspend-notify`,
 `no-prewarm` (with `-ColdPipelines`), `skip-draws` (the game without its
-drawing, the ceiling), `serial`, `vulkan`, `constant-reuse`, `index-cache`,
+drawing, the ceiling), `serial`, `vulkan`, `constant-reuse`, `no-index-cache`,
 `hog-64` to `hog-12288` (a thread keeps that many KB in the caches: compare
 the larger ones with `hog-64`, which takes only a core), `no-draw-timers`,
 `priority`, `no-host-timing`, `render-spin-0`, `render-spin-100` and
