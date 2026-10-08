@@ -331,4 +331,4 @@ Write-Host ''
 Get-Content -LiteralPath $summary | Write-Host
 Write-Host ''
 Write-Host "Summary: $summary" -ForegroundColor Green
-Write-Host 'Send this .md file: it has this game's own threads and frames only, and names no other program.'
+Write-Host "Send this .md file: it has this game's own threads and frames only, and names no other program."
