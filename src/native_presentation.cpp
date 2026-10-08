@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <vector>
 #include <stdexcept>
 #include <cmath>
@@ -594,7 +595,15 @@ struct NativePresentation::Impl {
         }
     }
     // Waits until the render thread has consumed entry target - 1.
+    uint32_t drain_waits = 0;
+    std::chrono::steady_clock::duration drain_wait_time{};
     void wait_for_head(uint64_t target) {
+        if (queue_head.load(std::memory_order_acquire) >= target) return;
+        const auto start = std::chrono::steady_clock::now();
+        struct Timed {
+            Impl& impl; std::chrono::steady_clock::time_point start;
+            ~Timed() { ++impl.drain_waits; impl.drain_wait_time += std::chrono::steady_clock::now() - start; }
+        } timed{*this, start};
         for (int i = 0; i < 4000 && queue_head.load(std::memory_order_acquire) < target; ++i)
             std::this_thread::yield();
         if (queue_head.load(std::memory_order_seq_cst) >= target) return;
@@ -1294,6 +1303,13 @@ NativePresentation::~NativePresentation() = default;
 uint32_t NativePresentation::width() const noexcept { return impl_->width; }
 uint32_t NativePresentation::height() const noexcept { return impl_->height; }
 uint32_t NativePresentation::render_width() const noexcept { return impl_->render_width; }
+NativePresentation::DrainWaits NativePresentation::take_drain_waits() noexcept {
+    const DrainWaits waits{impl_->drain_waits,
+                           std::chrono::duration<double, std::milli>(impl_->drain_wait_time).count()};
+    impl_->drain_waits = 0;
+    impl_->drain_wait_time = {};
+    return waits;
+}
 uint32_t NativePresentation::render_height() const noexcept { return impl_->render_height; }
 plume::RenderRect NativePresentation::render_rectangle(const plume::RenderRect& rectangle) const {
     return impl_->render_rectangle(rectangle);

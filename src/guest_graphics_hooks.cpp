@@ -332,6 +332,7 @@ static uint64_t frame_stream_bytes=0;
 // index buffer, turning a cut strip into triangles, and gathering vertices.
 static uint64_t frame_indices=0;
 static uint32_t frame_index_cached_draws=0;  // drawn from index_cache buffers
+static uint64_t frame_index_source_bytes=0;  // guest index bytes read (not from index_cache)
 static double frame_index_ms=0, frame_cut_ms=0, frame_gather_ms=0;
 // The rest of a draw: its two constant blocks, and recording it.
 static double frame_constants_ms=0, frame_record_ms=0, frame_draw_ms=0;
@@ -343,8 +344,15 @@ static const bool frame_metrics=[] {
     const char* setting=std::getenv("SFR_FRAME_METRICS");
     return setting ? *setting!='0' : sfr::graphics_trace();
 }();
+// SFR_DRAW_TIMERS=0 keeps the per-frame line but leaves out the timers and
+// stream sets taken for every draw (their _ms and stream fields read 0): a
+// benchmark run (config no-draw-timers) shows what measuring them costs.
+static const bool draw_timers=[] {
+    const char* setting=std::getenv("SFR_DRAW_TIMERS");
+    return frame_metrics && !(setting && *setting=='0');
+}();
 static auto metrics_clock() {
-    return frame_metrics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    return draw_timers ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 }
 
 // SFR_SKIP_DRAWS=1 drops every draw before any work, including gathering its
@@ -512,6 +520,7 @@ SFR_GRAPHICS_HOST_HOOK(sub_824E65A0) {
     // Consume counters even in quiet mode so observation never changes their
     // frame boundaries. Only detailed mode formats the large diagnostic line.
     const auto pipeline_work=graphics().renderer().take_pipeline_work();
+    const auto drain_waits=graphics().presentation().take_drain_waits();
     const auto execution_work=sfr::take_guest_execution_timings();
     const auto queued_ns=sfr::GuestExecution::main_thread_ready_wait_ns.exchange(0,std::memory_order_relaxed);
     const auto blocked_ns=sfr::GuestExecution::main_thread_blocked_ns.exchange(0,std::memory_order_relaxed);
@@ -580,6 +589,7 @@ SFR_GRAPHICS_HOST_HOOK(sub_824E65A0) {
               << " biggest=" << frame_biggest_draw
               << " streams=" << frame_streams.size() << " stream_bytes=" << frame_stream_bytes
               << " indices=" << frame_indices << " index_cached_draws=" << frame_index_cached_draws
+              << " index_source_bytes=" << frame_index_source_bytes
               << " index_ms=" << frame_index_ms << " cut_ms=" << frame_cut_ms
               << " gather_ms=" << frame_gather_ms << " constants_ms=" << frame_constants_ms
               << " record_ms=" << frame_record_ms << " draw_ms=" << frame_draw_ms
@@ -595,6 +605,8 @@ SFR_GRAPHICS_HOST_HOOK(sub_824E65A0) {
               << " upload_peak_bytes=" << pipeline_work.upload_peak_bytes
               << " upload_budget_drains=" << pipeline_work.upload_budget_drains
               << " textures=" << pipeline_work.textures << " texture_ms=" << pipeline_work.texture_milliseconds
+              << " texture_source_bytes=" << pipeline_work.texture_source_bytes << " ring_bytes=" << pipeline_work.ring_bytes
+              << " drain_waits=" << drain_waits.count << " drain_ms=" << drain_waits.milliseconds
               << " frame_ms=" << frame_ms << " pacing_ms=" << pacing_ms
               << " present_ms=" << present_ms << " main_queued_ms="
               << double(queued_ns)/1e6
@@ -634,6 +646,7 @@ SFR_GRAPHICS_HOST_HOOK(sub_824E65A0) {
     frame_stream_bytes=0;
     frame_indices=0;
     frame_index_cached_draws=0;
+    frame_index_source_bytes=0;
     frame_index_ms=frame_cut_ms=frame_gather_ms=0;
     frame_constants_ms=frame_record_ms=frame_draw_ms=0;
     ++sfr::present_count;
@@ -718,7 +731,7 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
     struct DrawTimer {
         std::chrono::steady_clock::time_point start;
         ~DrawTimer() {
-            if(frame_metrics) frame_draw_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+            if(draw_timers) frame_draw_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
         }
     } draw_timer{draw_start};
     if(device!=sfr::GuestGraphics::device_address) throw sfr::RuntimeStop("native-draw",device,"draw on a non-native device");
@@ -890,7 +903,8 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
         sfr::swap_words_into(host,vertices);
         if(frame_metrics) {
             frame_vertex_swap_bytes+=vertices.size();
-            frame_vertex_swap_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-swap_start).count();
+            if(draw_timers)
+                frame_vertex_swap_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-swap_start).count();
         }
         draw.vertices=host;
     }
@@ -929,7 +943,8 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
         draw.stride=wide;
         if(frame_metrics) {
             frame_vertex_repack_bytes+=repacked.size();
-            frame_vertex_repack_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-repack_start).count();
+            if(draw_timers)
+                frame_vertex_repack_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-repack_start).count();
         }
     }
     }
@@ -1038,7 +1053,7 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
     const auto constants_start=metrics_clock();
     constants(1920,draw.vertex_constants);
     constants(6016,draw.pixel_constants);
-    if(frame_metrics) frame_constants_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-constants_start).count();
+    if(draw_timers) frame_constants_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-constants_start).count();
     // Loop constants i0..i15 (+10140, one packed register each: count, start
     // and step as signed bytes) for a shader whose loops count with them.
     for(uint32_t i=0;i<16;++i) {
@@ -1147,7 +1162,7 @@ static void native_draw(PPCContext& ctx, uint32_t source, uint32_t device, uint3
     }
     const auto record_start=metrics_clock();
     graphics().renderer().draw(draw);
-    if(frame_metrics) frame_record_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-record_start).count();
+    if(draw_timers) frame_record_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-record_start).count();
     ++frame_draws;
     // SFR_FRAME_DUMP=<present>: write the framebuffer every SFR_FRAME_DUMP_EVERY
     // draws of that one frame, to see which draw changes what is on screen.
@@ -1381,7 +1396,7 @@ SFR_GRAPHICS_HOOK(sub_824F56E8) {
     const auto stream=stream0(device);
     if(!stream.stride) { note_empty_stream(0x824F5570); return; }
     const uint32_t vertex_count=stream.size/stream.stride;
-    if(frame_metrics && frame_streams.emplace(stream.physical,stream.size).second) frame_stream_bytes+=stream.size;
+    if(draw_timers && frame_streams.emplace(stream.physical,stream.size).second) frame_stream_bytes+=stream.size;
     const uint32_t restart=wide?0xFFFFFFFFu:0xFFFFu;
     const bool restart_enabled=graphics().render_state().primitive_restart_enabled.value_or(false);
     // SFR_INDEX_CACHE=1: an index list unchanged since the last frame is drawn
@@ -1417,6 +1432,7 @@ SFR_GRAPHICS_HOOK(sub_824F56E8) {
     memory.check(indices,uint64_t(count)*index_size);
     const uint8_t* index_bytes=memory.base()+indices;
     frame_indices+=count;
+    frame_index_source_bytes+=uint64_t(count)*index_size;
     const auto index_start=metrics_clock();
     static thread_local std::vector<uint32_t> order;
     order.resize(count);
@@ -1425,7 +1441,7 @@ SFR_GRAPHICS_HOOK(sub_824F56E8) {
     const uint32_t lowest=scan.lowest, highest=scan.highest;
     if(lowest<=highest && highest>=vertex_count)
         throw sfr::RuntimeStop("native-draw",highest,"index exceeds the stream 0 vertex buffer");
-    if(frame_metrics) frame_index_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-index_start).count();
+    if(draw_timers) frame_index_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-index_start).count();
     if(lowest>highest) return;  // restart indices only
     // Only the vertices the indices reach are located and checked: the title
     // binds streams of megabytes and draws small pieces of them, and checking
@@ -1446,7 +1462,7 @@ SFR_GRAPHICS_HOOK(sub_824F56E8) {
             // indices keep their stream numbering; the base vertex location
             // moves the block back to the start.
             const std::span<const uint8_t> window(used_bytes,size_t(used));
-            if(frame_metrics) frame_gather_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-copy_start).count();
+            if(draw_timers) frame_gather_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-copy_start).count();
             const plume::RenderBuffer* const kept=store_indices?graphics().renderer().store_indices(order,lowest,highest):nullptr;
             native_draw(ctx,0x824F56E8,device,primitive,uint32_t(block),window,stream.stride,order,-int32_t(lowest),
                         stream.physical+lowest*stream.stride,kept,uint32_t(order.size()));
@@ -1469,7 +1485,7 @@ SFR_GRAPHICS_HOOK(sub_824F56E8) {
         }
         order=std::move(list);
         primitive=4;
-        if(frame_metrics) frame_cut_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-cut_start).count();
+        if(draw_timers) frame_cut_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-cut_start).count();
     }
     if(order.empty()) return;
     // The vertices are gathered in index order rather than uploaded whole with
@@ -1480,7 +1496,7 @@ SFR_GRAPHICS_HOOK(sub_824F56E8) {
     for(auto& vertex:order) vertex-=lowest;  // numbered from the checked range
     const std::span<uint8_t> gathered=byte_scratch(order.size()*stream.stride);
     gather_vertices(gathered.data(),used_bytes,order.data(),order.size(),stream.stride);
-    if(frame_metrics) frame_gather_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-gather_start).count();
+    if(draw_timers) frame_gather_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-gather_start).count();
     native_draw(ctx,0x824F56E8,device,primitive,uint32_t(order.size()),gathered,stream.stride);
 }
 

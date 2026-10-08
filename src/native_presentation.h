@@ -121,6 +121,12 @@ public:
     }
     // Changes when a list begins or a custom pass invalidates guest bindings.
     uint64_t list_generation() const;
+    // How often, and for how many milliseconds, the caller waited since the
+    // last call for the render thread to catch up (drain before a clear,
+    // present, flush, ...; a full queue). Waits that found it caught up are
+    // not counted.
+    struct DrainWaits { uint32_t count; double milliseconds; };
+    DrainWaits take_drain_waits() noexcept;
     // Submits the recorded draws and clears and waits for them (and for a
     // frame still in flight), then runs the after_flush callbacks with
     // complete set (resource recycling).

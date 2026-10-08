@@ -139,6 +139,15 @@ $settings = @{
     # (docs/handheld-performance-2026-09-30.md): each differs from baseline by one switch
     'constant-reuse' = @{ SFR_CONSTANT_UPLOAD_REUSE = '1' }    # exact 4 KiB constant uploads reused (off by default)
     'index-cache'    = @{ SFR_INDEX_CACHE = '1' }              # unchanged index lists kept decoded from frame to frame (off by default)
+    # how much a frame depends on the shared L3 (SFR_CACHE_HOG_KB, diagnostic_main.cpp): a thread keeps
+    # that many KB of its own in the caches; hog-64 fits its core's L2 and takes only the core, so compare
+    # the larger ones with it, not with baseline
+    'hog-64'    = @{ SFR_CACHE_HOG_KB = '64' }
+    'hog-2048'  = @{ SFR_CACHE_HOG_KB = '2048' }
+    'hog-4096'  = @{ SFR_CACHE_HOG_KB = '4096' }
+    'hog-12288' = @{ SFR_CACHE_HOG_KB = '12288' }
+    # the per-frame line without the timers and stream sets taken at every draw: what measuring them costs
+    'no-draw-timers' = @{ SFR_DRAW_TIMERS = '0' }
     'priority'       = @{ SFR_GUEST_SATURATED_PRIORITY = '1' } # saturated guests' host priority raised (off by default)
     'no-host-timing' = @{ SFR_HOST_TIMING = '0' }              # the host timer and speed policy left alone (on by default)
     'audio-parallel' = @{ SFR_AUDIO_PARALLEL = '5' }          # the audio pump beside the main thread on console processor 5 (off by default)

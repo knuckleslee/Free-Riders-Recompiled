@@ -189,6 +189,9 @@ public:
         uint64_t upload_submissions = 0, upload_peak_bytes = 0, upload_budget_drains = 0;
         double upload_wait_ms = 0;
         uint64_t constant_saved_bytes = 0; // Actual skipped writes when reuse is enabled.
+        // Bytes written to the upload ring by draws, and guest bytes read for
+        // texture uploads: how much a frame streams through the CPU.
+        uint64_t ring_bytes = 0, texture_source_bytes = 0;
         // Resolves copied this frame: each ends the render pass, which a tiling
         // GPU pays for with a store and a reload of the whole color and depth.
         uint32_t resolve_copies = 0;

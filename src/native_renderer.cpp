@@ -290,6 +290,7 @@ struct NativeRenderer::Impl {
     std::unique_ptr<ConstantReuseProbe> constant_reuse_probe;
     std::unique_ptr<std::array<NativeConstantUpload, 2>> constant_uploads;
     uint64_t constant_saved_bytes = 0;
+    uint64_t ring_bytes = 0, texture_source_bytes = 0;  // take_pipeline_work
     std::set<uint64_t> dynamic_ranges;  // physical starts of rewritten textures
     std::map<uint32_t, TextureRange> texture_ranges;  // by descriptor index
     // Destination address of a resolve to its descriptor index (the copy of
@@ -797,6 +798,8 @@ NativeRenderer::PipelineWork NativeRenderer::take_pipeline_work() noexcept {
     }
     work.constant_saved_bytes = impl_->constant_saved_bytes;
     impl_->constant_saved_bytes = 0;
+    work.ring_bytes = std::exchange(impl_->ring_bytes, 0);
+    work.texture_source_bytes = std::exchange(impl_->texture_source_bytes, 0);
     work.resolve_copies = impl_->resolve_copies;
     impl_->resolve_copies = 0;
     impl_->pipelines_created = 0;
@@ -1170,6 +1173,7 @@ uint32_t NativeRenderer::texture(GuestMemory& memory, const FetchWords& words) {
     const uint32_t source = guest_view(memory, fetch.base_address, guest_size);
     std::vector<uint8_t> bytes(guest_size);
     memory.check(source, guest_size);
+    impl_->texture_source_bytes += guest_size;
     std::memcpy(bytes.data(), memory.base() + source, guest_size);
     const uint64_t hash = content_hash(bytes.data(), bytes.size());
     swap_texture_bytes(bytes, fetch.endian);
@@ -1418,6 +1422,7 @@ void NativeRenderer::draw(const NativeDraw& draw) {
     if (!in_place && impl_->ring_offset + total > ring_size) { ++impl_->ring_flushes; impl_->presentation.flush(); }
     const uint64_t base_offset = impl_->ring_offset;
     impl_->ring_offset = align(base_offset + total, 256);
+    impl_->ring_bytes += total;
     auto* upload = impl_->rings[impl_->ring_index].get();
     uint8_t* mapped = impl_->rings_mapped[impl_->ring_index] + base_offset;
     if (!in_place) std::memcpy(mapped, draw.vertices.data(), vertex_bytes);

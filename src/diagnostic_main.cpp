@@ -3410,6 +3410,27 @@ static void refresh_entry_observation() {
 
 static void observe_function_entry(PPCContext&, const char*, uint32_t) __attribute__((noinline));
 
+// SFR_CACHE_HOG_KB=N, an experiment (docs/benchmark.md): a thread that keeps N
+// KB of its own in the caches for as long as the program runs, reading and
+// writing it a line at a time. 64 fits that core's own L1 and L2, so it takes
+// only a core; larger sizes also take that much of the shared L3 away from
+// the game. Compared with 64, they show how much a frame depends on the L3.
+static void start_cache_hog() {
+    const char* const text = std::getenv("SFR_CACHE_HOG_KB");
+    const long kb = text && *text ? std::strtol(text, nullptr, 10) : 0;
+    if (kb <= 0 || kb > 262144) return;
+    static std::jthread hog([words = size_t(kb) * 1024 / 8](std::stop_token stop) {
+        std::vector<uint64_t> buffer(words, 1);
+        uint64_t sum = 0;
+        while (!stop.stop_requested())
+            for (size_t i = 0; i < buffer.size(); i += 8) {
+                sum += buffer[i];
+                buffer[i] = sum;
+            }
+    });
+    std::cerr << "CACHE_HOG kb=" << kb << '\n';
+}
+
 void enter_function_observed(PPCContext& ctx, const char* name, uint32_t address) {
     auto& entry = guest_thread_state.entry;
     if (entry.parallel) parallel_function_entry(ctx, address);
@@ -4567,6 +4588,7 @@ int main(int argc, char** argv) {
             std::cerr << "MAIN_HOST_AFFINITY unpinned processors=" << host_processors << '\n';
         }
 #endif
+        sfr::start_cache_hog();
         ctx.fpscr.loadFromHost();
         {
             struct Shutdown {
