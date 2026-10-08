@@ -19,7 +19,6 @@ struct LauncherSettings {
     bool skip_movies = false;
     bool vertex_cache = true;        // SFR_VERTEX_CACHE
     bool gpu_pipeline = true;        // SFR_GPU_PIPELINE
-    bool parallel = true;            // SFR_PARALLEL_WORKER=all (off: serial)
     uint32_t race_render_every = 1;  // SFR_RENDER_EVERY
     bool ui_sounds = true;           // the launcher's own sounds
     bool vulkan = true;             // legacy settings key; selects Vulkan or D3D12
@@ -63,6 +62,7 @@ struct LauncherSettings {
     std::string player1_gamepad, player2_gamepad;
     std::string language = "auto";   // the launcher's: "auto" (the system's), "en" or "zh-TW"
     std::string game_language = "auto"; // independent disc language; game_language.h
+    std::string voice_language = "auto"; // "en" or "ja" voices apart from the text; voice_language.h
     std::filesystem::path image_directory, asset_directory;
 };
 

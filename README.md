@@ -141,6 +141,10 @@ with [docs/progress.md](docs/progress.md).
   Each player turns, confirms and backs out of the two-player menus with their own controller, and either can pause; a guest second player no longer adds a 10-second wait. Relay Race works with controllers: A swaps in the next racer. The launcher's settings can all be reached with a controller. 4-core CPUs keep the main thread's core to itself, and frames over 250 ms are logged.
 - [v0.6.2 — Fewer freezes, START skips story scenes](https://github.com/YuutaTsubasa/Free-Riders-Recompiled/releases/tag/v0.6.2)
   The race and Relay hand-over freezes of up to a few seconds are gone: the main thread no longer spins on a lock other threads hold across system calls. START skips a World Grand Prix story scene, and the results screen's Kinect Guide no longer closes the game.
+- [v0.6.3 — Any install folder, voices apart from text, steadier sound](https://github.com/YuutaTsubasa/Free-Riders-Recompiled/releases/tag/v0.6.3)
+  The game starts from a folder with non-Latin letters on Windows, and full screen works with Vulkan on Linux. Voices can be English or Japanese apart from the text. Sound keeps a short cushion against crackles, and 4-core CPUs no longer pin the main thread. The programs have an icon, and HedgeModManager can find the game and manage its mods.
+- [v0.6.4 — No more getting stuck at start with Multi-core execution off](https://github.com/YuutaTsubasa/Free-Riders-Recompiled/releases/tag/v0.6.4)
+  With the launcher's Multi-core execution turned off the game got stuck at start on every device. The switch is gone: the game's threads always run in parallel, and an old setting that turned it off is ignored.
 
 ## System Requirements
 
@@ -174,7 +178,7 @@ The launcher groups settings by what you want to change:
 
 | Category | Settings |
 | --- | --- |
-| General | Launcher and game languages, movies, restore defaults |
+| General | Launcher, game and voice languages, movies, restore defaults |
 | Graphics | Window and rendering resolutions, fullscreen, backend, VSync, expandable performance options |
 | Sound | Game volume and launcher sounds |
 | Controls | Each player's input source and controller, button/key bindings, Android touch and tilt |
@@ -367,8 +371,14 @@ creates every shader it has while it boots, so a pack made with
 `python scripts/pack_shaders.py` after starting the game once on Windows
 (under Vulkan too, for the SPIR-V) is complete. Releases include one.
 
-**Can I use the No Kinect Patch or other mods?** No mod support exists. The
-Kinect emulation here is the project's own code (see [Credits](#credits)).
+**Can I use mods?** File-replacement mods, yes, since v0.6.0: put each in its
+own folder in `mods` beside the launcher and switch it on in the **Mods** tab
+([Mods](docs/mods.md)). Sound, texture and text mods made for the original
+game work once their files sit in a folder with a `mod.ini`; for example the
+[Traditional Chinese mod](https://github.com/YuutaTsubasa/Free-Riders-Recompiled-Traditional-Chinese-Mod).
+Code mods do not apply: the No Kinect Patch changes the original executable
+for Xenia, and the Kinect emulation here is the project's own code (see
+[Credits](#credits)).
 
 **Why does the release need my disc?** The release holds the recompiled
 program, but none of the game's data (models, textures, sound, movies): that

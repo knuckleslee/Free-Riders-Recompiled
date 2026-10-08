@@ -77,7 +77,7 @@ enum Text {
     WindowSize, DesktopSize, Fullscreen, FullscreenHint, VSync, VSyncHint, RenderResolution, RenderResolutionHint, NativeResolution,
     Sound, SoundHint, Volume,
     SkipMovies, SkipMoviesHint,
-    Parallel, ParallelHint, VertexCache, VertexCacheHint, GpuPipeline, GpuPipelineHint, RaceEvery, RaceEveryHint,
+    VertexCache, VertexCacheHint, GpuPipeline, GpuPipelineHint, RaceEvery, RaceEveryHint,
     CameraLabel, CameraHint, CameraHintOff, CameraHintPicture, CameraHintKinect, CameraOff, CameraPicture, CameraMotion, CameraDevice, CameraDeviceHint, CameraNone,
     CameraTest, CameraTesting, CameraWorks, CameraSilent, CameraClosed, CameraMirror, CameraMirrorHint,
     CameraKinect, KinectRow, KinectRowHint, KinectMissing,
@@ -106,7 +106,7 @@ enum Text {
     PressKey, PressButton, Unbound, ResetBindings, BindingsHint, SticksFixed,
     PlayerOneGamepad, PlayerTwoGamepad, GamepadHint, GamepadAutomatic, GamepadMissing,
     AvatarModel, AvatarModelHint, AvatarModelNone, AvatarModelMissing, AvatarModelImportFailed, Clear,
-    GameLanguageLabel, GameLanguageHint, TabAvatar,
+    GameLanguageLabel, GameLanguageHint, VoiceLanguageLabel, VoiceLanguageHint, VoiceFollowsGame, TabAvatar,
     SectionLanguage, SectionPlayback, SectionReset, SectionWindow, SectionRendering, SectionPerformance,
     SectionGameAudio, SectionLauncherAudio, SectionPlayer1, SectionPlayer2, SectionBindings, SectionTouch, SectionVoice,
     SectionResolution, WindowResolutionHint, SectionDiagnostics, ExportDiagnostics, ExportDiagnosticsHint,
@@ -139,9 +139,6 @@ constexpr std::array<std::array<const char*, 2>, TextCount> texts{{
     {"Volume", "音量"},
     {"Skip movies", "略過影片"},
     {"Ends the opening and story movies after their first frames.", "開場與劇情影片只播放開頭便結束。"},
-    {"Multi-core execution", "多核心執行"},
-    {"Runs the game's threads on several processor cores, as the console does. Turn it off if the game becomes unstable.",
-     "像主機一樣以多個處理器核心執行遊戲的執行緒。若遊戲不穩定，可以關閉。"},
     {"Vertex cache", "頂點快取"},
     {"Keeps geometry that does not change on the GPU. Turn it off if models look out of date.",
      "將沒有變動的幾何資料保留在 GPU 上。若模型顯示不正確，可以關閉。"},
@@ -329,6 +326,10 @@ constexpr std::array<std::array<const char*, 2>, TextCount> texts{{
     {"Game language", "遊戲語言"},
     {"Choose the game's language independently of the launcher. System language follows your OS; unsupported languages use English. Applies when the game starts.",
      "獨立選擇遊戲語言。「系統語言」依照作業系統設定，不支援時使用英文。於下次啟動遊戲時套用。"},
+    {"Voice language", "語音語言"},
+    {"The recorded voices, apart from the text: for example Japanese text (or a translation mod that replaces it) with English voices. The disc has English and Japanese voices; the few lines only one of them has stay silent in the other. Applies when the game starts.",
+     "與文字分開選擇角色語音：例如日文文字（或取代日文的翻譯 MOD）配英文語音。光碟只有英文與日文語音，少數只有其中一種才有的台詞，在另一種語言下不會發聲。於下次啟動遊戲時套用。"},
+    {"Same as the game", "跟隨遊戲語言"},
     {"Avatar models", "Avatar 模型"},
     {"Languages", "語言"},
     {"Movies", "影片"},
@@ -1754,6 +1755,24 @@ struct Launcher {
                 ImGui::EndCombo();
             }
         });
+        setting_row(tr(VoiceLanguageLabel), tr(VoiceLanguageHint), 220 * scale, scale, [&] {
+            static constexpr std::array<std::pair<const char*, const char*>, 2> voices{{
+                {"en", "English"}, {"ja", "日本語"}}};
+            const char* current = tr(VoiceFollowsGame);
+            for (const auto& [code, name] : voices)
+                if (settings.voice_language == code) current = name;
+            ImGui::SetNextItemWidth(220 * scale);
+            if (ImGui::BeginCombo("##voice_language", current)) {
+                if (ImGui::Selectable(tr(VoiceFollowsGame), settings.voice_language == "auto"))
+                    settings.voice_language = "auto";
+                for (const auto& [code, name] : voices) {
+                    const bool selected = settings.voice_language == code;
+                    if (ImGui::Selectable(name, selected)) settings.voice_language = code;
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+        });
         settings_section(SectionPlayback);
         const float switch_width = ImGui::GetFrameHeight() * 1.9f;
         setting_row(tr(SkipMovies), tr(SkipMoviesHint), switch_width, scale, [&] { toggle("##movies", &settings.skip_movies); });
@@ -2195,7 +2214,6 @@ struct Launcher {
 
     void performance_settings() {
         const float switch_width = ImGui::GetFrameHeight() * 1.9f;
-        setting_row(tr(Parallel), tr(ParallelHint), switch_width, scale, [&] { toggle("##parallel", &settings.parallel); });
         setting_row(tr(VertexCache), tr(VertexCacheHint), switch_width, scale, [&] { toggle("##vertex", &settings.vertex_cache); });
         setting_row(tr(GpuPipeline), tr(GpuPipelineHint), switch_width, scale, [&] { toggle("##pipeline", &settings.gpu_pipeline); });
         const float slider_width = 220 * scale;
@@ -2763,6 +2781,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     Launcher launcher;
     sounds = &launcher.ui_sounds;
     launcher.directory = sfr::launcher::launcher_directory();
+    sfr::launcher::register_install(launcher.directory);
     launcher.settings_file = launcher.directory / L"settings.ini";
     launcher.log_file = launcher.directory / L"game.log";
     launcher.runtime_root = sfr::find_runtime_root(launcher.directory);
@@ -2783,8 +2802,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     window_class.lpfnWndProc = window_proc;
     window_class.hInstance = instance;
     window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));  // IDC_ARROW
-    window_class.hIcon = make_icon(GetSystemMetrics(SM_CXICON));
-    window_class.hIconSm = make_icon(GetSystemMetrics(SM_CXSMICON));
+    // The program's icon (src/app_icon.rc), or the drawn one without it.
+    auto icon = [](int size) {
+        if (HANDLE loaded = LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(1), IMAGE_ICON, size, size, 0))
+            return static_cast<HICON>(loaded);
+        return make_icon(size);
+    };
+    window_class.hIcon = icon(GetSystemMetrics(SM_CXICON));
+    window_class.hIconSm = icon(GetSystemMetrics(SM_CXSMICON));
     window_class.lpszClassName = L"SfrLauncher";
     RegisterClassExW(&window_class);
 

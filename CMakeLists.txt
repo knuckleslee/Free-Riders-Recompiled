@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0091 NEW)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 project(FreeRidersRecompiled LANGUAGES C CXX)
+# The icon resource (src/app_icon.rc): Ninja's dependency scanner for .rc
+# files runs the C compiler as rc's preprocessor and fails with clang-cl; the
+# resource includes nothing, so there are no dependencies to scan.
+set(CMAKE_NINJA_CMCLDEPS_RC OFF)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(ANDROID OR APPLE)
@@ -231,6 +235,9 @@ target_include_directories(sfr_guest_critical_sections_test PRIVATE src)
 target_link_libraries(sfr_guest_critical_sections_test PRIVATE sfr_guest_execution)
 add_test(NAME guest_critical_sections COMMAND sfr_guest_critical_sections_test)
 set_tests_properties(guest_critical_sections PROPERTIES TIMEOUT 20)
+add_executable(sfr_voice_language_test tests/voice_language_test.cpp)
+target_include_directories(sfr_voice_language_test PRIVATE src)
+add_test(NAME voice_language COMMAND sfr_voice_language_test)
 add_executable(sfr_game_region_test tests/game_region_test.cpp src/game_region.cpp src/guest_memory.cpp)
 target_include_directories(sfr_game_region_test PRIVATE src)
 add_test(NAME game_region COMMAND sfr_game_region_test)
@@ -486,9 +493,9 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/imgui/imgui.cpp")
         src/kinect_preview.cpp src/kinect_preview_window.cpp src/camera_debug.cpp src/text_wrap.cpp
         ${SFR_IMGUI}/imgui.cpp ${SFR_IMGUI}/imgui_draw.cpp ${SFR_IMGUI}/imgui_tables.cpp ${SFR_IMGUI}/imgui_widgets.cpp)
     if(WIN32)
-        add_executable(sfr_launcher WIN32 ${SFR_LAUNCHER_SOURCES} src/launcher_platform_win32.cpp
+        add_executable(sfr_launcher WIN32 ${SFR_LAUNCHER_SOURCES} src/launcher_platform_win32.cpp src/app_icon.rc
             ${SFR_IMGUI}/backends/imgui_impl_win32.cpp ${SFR_IMGUI}/backends/imgui_impl_dx11.cpp)
-        target_link_libraries(sfr_launcher PRIVATE sfr_installer winmm imm32 d3d11 dxgi d3dcompiler hid setupapi ole32 shell32 xinput gdi32)
+        target_link_libraries(sfr_launcher PRIVATE sfr_installer winmm imm32 d3d11 dxgi d3dcompiler hid setupapi ole32 shell32 xinput gdi32 advapi32)
         set_target_properties(sfr_launcher PROPERTIES OUTPUT_NAME FreeRidersRecompiled)
     else()
         set(SFR_LAUNCHER_SOURCES ${SFR_LAUNCHER_SOURCES} src/launcher_platform_sdl.cpp
@@ -888,6 +895,10 @@ if(SFR_BUILD_DIAGNOSTIC)
         target_link_options(sfr_cpu_diagnostic PRIVATE -Wl,-Bsymbolic-functions)
     else()
         add_executable(sfr_cpu_diagnostic)
+        if(WIN32)
+            # The icon (Issue #63), and narrow strings in UTF-8 (src/game.manifest, Issue #71).
+            target_sources(sfr_cpu_diagnostic PRIVATE src/app_icon.rc src/game.manifest)
+        endif()
     endif()
     target_sources(sfr_cpu_diagnostic PRIVATE src/diagnostic_main.cpp src/guest_memory.cpp src/xex_module.cpp src/virtual_memory.cpp src/critical_section.cpp src/hardware_info.cpp src/thread_local_storage.cpp src/system_time.cpp src/guest_clock.cpp src/timestamp_bundle.cpp src/vector_memory.cpp src/optional_import_policy.cpp src/native_modules.cpp src/integer_arithmetic.cpp src/memory_statistics.cpp
         ${SFR_DIAGNOSTIC_SOURCES} "${SFR_DIAGNOSTIC_DIR}/ppc_func_mapping.cpp" "${SFR_DIAGNOSTIC_DIR}/imports.cpp")
