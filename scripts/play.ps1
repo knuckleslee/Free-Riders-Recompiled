@@ -33,7 +33,8 @@ param(
     [string]$Region = 'ntsc-us',
     # Started through RenderDoc's renderdoccmd (from RenderDoc's folder, or the
     # path given with -RenderDocCmd): F12 in the game captures a frame, saved
-    # in out/renderdoc. Open it in RenderDoc to see a frame's draws.
+    # in out/renderdoc. When the game closes, each new capture is converted
+    # (renderdoccmd convert) and its API calls counted into a -calls.md beside it.
     [switch]$RenderDoc,
     [string]$RenderDocCmd = '',
     # Borderless full screen from the start (SFR_FULLSCREEN; Alt+Enter toggles in the game).
@@ -59,6 +60,7 @@ if ($RenderDoc) {
     if (-not $RenderDocCmd -or -not (Test-Path -LiteralPath $RenderDocCmd)) { throw 'renderdoccmd.exe not found: install RenderDoc or pass -RenderDocCmd <path>' }
     $captures = Join-Path $root 'out/renderdoc'
     New-Item -ItemType Directory -Force -Path $captures | Out-Null
+    $capturesBefore = @(Get-ChildItem -LiteralPath $captures -Filter '*.rdc' -ErrorAction SilentlyContinue | ForEach-Object FullName)
     # The game inherits this process's environment, so every setting below reaches it.
     $launch = "`"$RenderDocCmd`" capture -w -d `"$root`" -c `"$(Join-Path $captures 'sfr')`" `"$exe`""
 }
@@ -157,6 +159,27 @@ try {
     } else {
         & $env:COMSPEC /d /c $command
         if ($LASTEXITCODE -ne 0) { Write-Output "Stopped (exit $LASTEXITCODE); the last lines of $Log say why." }
+    }
+    if ($RenderDoc) {
+        # Each new capture's API calls, counted from RenderDoc's structured export.
+        foreach ($capture in @(Get-ChildItem -LiteralPath $captures -Filter '*.rdc' | Where-Object { $capturesBefore -notcontains $_.FullName })) {
+            $xml = [System.IO.Path]::ChangeExtension($capture.FullName, '.xml')
+            & $RenderDocCmd convert -f $capture.FullName -o $xml -c xml | Out-Null
+            if (-not (Test-Path -LiteralPath $xml)) { Write-Output "Could not convert $($capture.Name)"; continue }
+            $calls = @{}
+            foreach ($line in [System.IO.File]::ReadLines($xml)) {
+                if ($line -match '<chunk [^>]*name="([^"]+)"') { $calls[$Matches[1]] = 1 + [int]$calls[$Matches[1]] }
+            }
+            Remove-Item -LiteralPath $xml -ErrorAction SilentlyContinue
+            $draws = 0
+            foreach ($name in $calls.Keys) { if ($name -match '::Draw(Indexed)?Instanced$') { $draws += $calls[$name] } }
+            $report = @("# $($capture.Name)", '', "- Draw calls (DrawInstanced and DrawIndexedInstanced): $draws", '',
+                        '| API call | Count |', '| --- | ---: |')
+            foreach ($entry in ($calls.GetEnumerator() | Sort-Object Value -Descending)) { $report += "| $($entry.Key) | $($entry.Value) |" }
+            $summary = [System.IO.Path]::ChangeExtension($capture.FullName, $null).TrimEnd('.') + '-calls.md'
+            Set-Content -LiteralPath $summary -Value $report -Encoding UTF8
+            Write-Output "$($capture.Name): $draws draw calls; the calls are counted in $summary"
+        }
     }
     # The races played, as the benchmark counts them: frames with racing=1, less
     # the first 300 of each race (the countdown).
