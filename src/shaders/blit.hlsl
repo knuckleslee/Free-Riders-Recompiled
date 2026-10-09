@@ -54,12 +54,14 @@ float rounded_box(float2 p, float2 c, float2 h, float k) {
 }
 
 // A filled half-length figure in the pose, seen as in a mirror (the arm the
-// player raises reaches to the screen's left), in units of the gauge's
-// radius, +y down; cut off at the ring's inner edge like a bust.
+// player raises reaches to the screen's left, the other hangs at the right,
+// a gap apart from the body), in units of the gauge's radius, +y down; cut
+// off at the ring's inner edge like a bust.
 float figure(float2 p, float edge) {
-    float d = length(p - float2(0.05, -0.3)) - 0.14;                            // head
-    d = min(d, rounded_box(p, float2(0.06, 0.26), float2(0.18, 0.3), 0.12));     // body
-    d = min(d, segment(p, float2(-0.05, 0.02), float2(-0.36, 0.33)) - 0.075);    // arm, out at 45
+    float d = length(p - float2(0.0, -0.31)) - 0.14;                            // head
+    d = min(d, rounded_box(p, float2(0.0, 0.27), float2(0.14, 0.3), 0.11));      // body
+    d = min(d, segment(p, float2(-0.08, 0.03), float2(-0.38, 0.33)) - 0.07);     // arm out at 45
+    d = min(d, segment(p, float2(0.215, 0.04), float2(0.235, 0.4)) - 0.06);      // arm hanging down
     const float inside = 1.0 - smoothstep(0.6 - edge, 0.6 + edge, length(p));
     return (1.0 - smoothstep(-edge, edge, d)) * inside;
 }
