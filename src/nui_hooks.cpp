@@ -512,6 +512,7 @@ SFR_INPUT_HOOK(sub_827707B0) {
     }
     const bool debug_active=camera_debug && !camera_debug->closed();
     sfr::CameraTrackingStatus camera_status;
+    if(camera_player) camera_player->set_in_menu(!racing);
     if(camera_player && camera_player->joints(camera_joints,&camera_status)) {
         camera_has_joints=true;
         camera_pose_counter.fetch_add(1,std::memory_order_relaxed);

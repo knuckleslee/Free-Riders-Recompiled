@@ -1,7 +1,11 @@
 #pragma once
 #include "kinect_sensor.h"
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string>
 
 namespace sfr {
 // A window of what a real Kinect sees, for placing and tilting it before
@@ -26,6 +30,33 @@ private:
     explicit KinectPreviewWindow(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> impl_;
 };
+
+// What the preview has seen so far, step by step, so that it can say where
+// it stops rather than only that it does: the runtime (the SDK), the sensor,
+// frames arriving from it, and a body tracked in them. Each step is only
+// worth checking once the one before it holds; a later step stays waiting
+// while an earlier one fails. A step holds when it is really working, not
+// when something is installed: a sensor that opened but sends nothing has
+// not passed the frames step.
+enum class KinectStepState : uint8_t { waiting, passed, failed };
+enum class KinectStep : uint8_t { runtime, sensor, frames, body, count };
+struct KinectReadinessInput {
+    bool opened = false;          // KinectSensor::open succeeded
+    std::string failure;          // its reason when it did not; empty while it opens
+    double seconds_open = 0;      // since it opened
+    double seconds_since_frame = -1;  // since a skeleton frame or an image last arrived; -1 for never
+    size_t bodies = 0;            // tracked in the newest frame
+};
+struct KinectReadiness {
+    std::array<KinectStepState, size_t(KinectStep::count)> steps{};
+    // The first step that failed, or KinectStep::count when none has.
+    KinectStep first_failed = KinectStep::count;
+    bool ready() const { return steps[size_t(KinectStep::body)] == KinectStepState::passed; }
+};
+KinectReadiness kinect_readiness(const KinectReadinessInput& input);
+// Frames stop counting as arriving after this long without one, and a sensor
+// open this long without any has failed the frames step.
+constexpr double kinect_frame_timeout_seconds = 1.5, kinect_first_frame_seconds = 3.0;
 
 // Where a point of the sensor's skeleton space (metres) falls in one of its
 // images: the depth camera's 320x240 exactly (the SDK's

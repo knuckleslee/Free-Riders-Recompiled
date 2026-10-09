@@ -253,6 +253,47 @@ int main() {
             require(sfr::kinect_level(none) == 0.0f, "a frame without gravity is left alone");
         }
 
+        {
+            using sfr::KinectStep;
+            using sfr::KinectStepState;
+            const auto state = [](const sfr::KinectReadiness& r, KinectStep step) { return r.steps[size_t(step)]; };
+            sfr::KinectReadinessInput input;
+            auto r = sfr::kinect_readiness(input);
+            require(state(r, KinectStep::runtime) == KinectStepState::waiting && r.first_failed == KinectStep::count,
+                    "while the sensor opens every step waits");
+
+            input.failure = "no-runtime";
+            r = sfr::kinect_readiness(input);
+            require(r.first_failed == KinectStep::runtime && state(r, KinectStep::sensor) == KinectStepState::waiting,
+                    "without a runtime the runtime step fails and the sensor is not asked");
+            input.failure = "no-sensor";
+            r = sfr::kinect_readiness(input);
+            require(state(r, KinectStep::runtime) == KinectStepState::passed && r.first_failed == KinectStep::sensor,
+                    "a runtime without a sensor fails at the sensor");
+            input.failure = "initialize-0x80080014";
+            require(sfr::kinect_readiness(input).first_failed == KinectStep::sensor, "a sensor that will not start fails at the sensor");
+
+            input = {};
+            input.opened = true;
+            input.seconds_open = 1.0;
+            r = sfr::kinect_readiness(input);
+            require(state(r, KinectStep::sensor) == KinectStepState::passed &&
+                    state(r, KinectStep::frames) == KinectStepState::waiting && r.first_failed == KinectStep::count,
+                    "a sensor just opened waits for its first frame");
+            input.seconds_open = 4.0;
+            require(sfr::kinect_readiness(input).first_failed == KinectStep::frames,
+                    "an open sensor that sends nothing fails at the frames");
+            input.seconds_since_frame = 3.0;
+            input.seconds_open = 10.0;
+            require(sfr::kinect_readiness(input).first_failed == KinectStep::frames, "frames that stopped fail at the frames");
+            input.seconds_since_frame = 0.05;
+            r = sfr::kinect_readiness(input);
+            require(r.first_failed == KinectStep::body && !r.ready(), "frames with nobody in them fail at the body");
+            input.bodies = 1;
+            r = sfr::kinect_readiness(input);
+            require(r.ready() && r.first_failed == KinectStep::count, "a tracked body passes every step");
+        }
+
         std::string why;
         if (!sfr::KinectSensor::supported())
             require(!sfr::KinectSensor::open(&why) && !why.empty(), "a platform without a runtime says why");
