@@ -41,30 +41,31 @@ static const float3 g_Colors[7] = {
     float3(1.0, 1.0, 1.0),     // START
 };
 
-// Distance from p to the segment a-b.
-float segment(float2 p, float2 a, float2 b) {
+// The smooth union of two distances: rounded where they meet, by k.
+float smooth_min(float a, float b, float k) {
+    const float h = saturate(0.5 + 0.5 * (b - a) / k);
+    return lerp(b, a, h) - k * h * (1.0 - h);
+}
+
+// Distance from p to a capsule from a to b that narrows from radius ra to rb.
+float limb(float2 p, float2 a, float2 b, float ra, float rb) {
     const float2 pa = p - a, ba = b - a;
-    return length(pa - ba * saturate(dot(pa, ba) / dot(ba, ba)));
+    const float h = saturate(dot(pa, ba) / dot(ba, ba));
+    return length(pa - ba * h) - lerp(ra, rb, h);
 }
 
-// Distance from p to a box of half-size h centred on c, its corners rounded by k.
-float rounded_box(float2 p, float2 c, float2 h, float k) {
-    const float2 q = abs(p - c) - h + k;
-    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - k;
-}
-
-// A filled half-length figure in the pose, seen as in a mirror (the arm the
-// player raises reaches to the screen's left), in units of the gauge's
-// radius, +y down; cut off at the ring's inner edge like a bust. The body is
-// as wide as its shoulders, and a cut from the right armpit down makes that
-// side the other arm, hanging and still joined at the shoulder.
+// A smooth mannequin in the pose, seen as in a mirror (the arm the player
+// raises reaches to the screen's left, the other hangs at the right), in
+// units of the gauge's radius, +y down: rounded limbs blended into the body,
+// the head a neck's gap above it.
 float figure(float2 p, float edge) {
-    float d = length(p - float2(-0.02, -0.31)) - 0.14;                          // head
-    float body = rounded_box(p, float2(0.02, 0.28), float2(0.2, 0.3), 0.13);
-    body = max(body, -(segment(p, float2(0.115, 0.07), float2(0.125, 0.7)) - 0.025));  // armpit cut
-    d = min(d, body);
-    d = min(d, segment(p, float2(-0.1, 0.04), float2(-0.4, 0.34)) - 0.07);       // arm out at 45
-    const float inside = 1.0 - smoothstep(0.6 - edge, 0.6 + edge, length(p));
+    float body = limb(p, float2(0.0, -0.2), float2(0.0, 0.07), 0.125, 0.11);
+    body = smooth_min(body, limb(p, float2(-0.055, 0.06), float2(-0.085, 0.5), 0.065, 0.05), 0.03);  // legs
+    body = smooth_min(body, limb(p, float2(0.055, 0.06), float2(0.085, 0.5), 0.065, 0.05), 0.03);
+    body = smooth_min(body, limb(p, float2(0.1, -0.2), float2(0.16, 0.13), 0.058, 0.045), 0.035);   // arm hanging
+    body = smooth_min(body, limb(p, float2(-0.1, -0.2), float2(-0.4, 0.07), 0.058, 0.045), 0.035);  // arm out at 45
+    const float d = min(body, length(p - float2(0.0, -0.43)) - 0.125);                          // head
+    const float inside = 1.0 - smoothstep(0.62 - edge, 0.62 + edge, length(p));
     return (1.0 - smoothstep(-edge, edge, d)) * inside;
 }
 
