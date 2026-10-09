@@ -59,12 +59,12 @@ float limb(float2 p, float2 a, float2 b, float ra, float rb) {
 // units of the gauge's radius, +y down: rounded limbs blended into the body,
 // the head a neck's gap above it.
 float figure(float2 p, float edge) {
-    float body = limb(p, float2(0.0, -0.2), float2(0.0, 0.07), 0.125, 0.11);
-    body = smooth_min(body, limb(p, float2(-0.055, 0.06), float2(-0.085, 0.5), 0.065, 0.05), 0.03);  // legs
-    body = smooth_min(body, limb(p, float2(0.055, 0.06), float2(0.085, 0.5), 0.065, 0.05), 0.03);
-    body = smooth_min(body, limb(p, float2(0.1, -0.2), float2(0.16, 0.13), 0.058, 0.045), 0.035);   // arm hanging
-    body = smooth_min(body, limb(p, float2(-0.1, -0.2), float2(-0.4, 0.07), 0.058, 0.045), 0.035);  // arm out at 45
-    const float d = min(body, length(p - float2(0.0, -0.43)) - 0.125);                          // head
+    float body = limb(p, float2(0.0, -0.2), float2(0.0, 0.07), 0.144, 0.126);
+    body = smooth_min(body, limb(p, float2(-0.055, 0.06), float2(-0.085, 0.5), 0.085, 0.065), 0.03);  // legs
+    body = smooth_min(body, limb(p, float2(0.055, 0.06), float2(0.085, 0.5), 0.085, 0.065), 0.03);
+    body = smooth_min(body, limb(p, float2(0.1, -0.2), float2(0.16, 0.13), 0.075, 0.058), 0.035);   // arm hanging
+    body = smooth_min(body, limb(p, float2(-0.1, -0.2), float2(-0.4, 0.07), 0.075, 0.058), 0.035);  // arm out at 45
+    const float d = min(body, length(p - float2(0.0, -0.455)) - 0.15);                          // head
     const float inside = 1.0 - smoothstep(0.62 - edge, 0.62 + edge, length(p));
     return (1.0 - smoothstep(-edge, edge, d)) * inside;
 }
