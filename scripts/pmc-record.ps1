@@ -13,7 +13,9 @@ param(
     [string]$OutDir = (Join-Path $PSScriptRoot 'pmc-out'),
     [switch]$Keep,
     # Starts at once and asks nothing (play.ps1 -Record starts it when a race is under way)
-    [switch]$NoPrompt
+    [switch]$NoPrompt,
+    # Names the summary pmc-<Label>.md (benchmark.ps1 -RecordPmc) instead of by time and process
+    [string]$Label = ''
 )
 $ErrorActionPreference = 'Continue'  # native tools' stderr must not stop the script
 $invariant = [Globalization.CultureInfo]::InvariantCulture
@@ -46,7 +48,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $etl = Join-Path $OutDir "pmc-$stamp.etl"
 $dump = Join-Path $OutDir "pmc-$stamp.txt"
 $frames = Join-Path $OutDir "presentmon-$stamp.csv"
-$summary = Join-Path $OutDir "pmc-$stamp-$name.md"
+$summary = if ($Label) { Join-Path $OutDir "pmc-$Label.md" } else { Join-Path $OutDir "pmc-$stamp-$name.md" }
 
 Add-Type -TypeDefinition @'
 using System;

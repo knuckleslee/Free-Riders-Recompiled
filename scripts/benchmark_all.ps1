@@ -11,16 +11,25 @@
 # out\bench\<time>-full holds both runs (parts\ and race\) and report.md, the two
 # summaries in one file to paste whole; out\bench\<time>-full-shareable.zip is the one
 # file to send. About 45 minutes on an i5-3470.
+#
+# -Set cache (run_benchmark.bat cache) is the cache-budget set instead, all Time Attack
+# stepped 1/60 s a frame:
+#   1. index: baseline, no-index-cache, constant-reuse and no-draw-timers, -Repeats rounds.
+#   2. hog: baseline and hog-64 to hog-12288 (how much a frame depends on the L3), -HogRepeats rounds.
+#   3. pmc: baseline and skip-draws once each with the CPU's counters recorded
+#      (benchmark.ps1 -RecordPmc), from an administrator PowerShell only.
 param(
+    [ValidateSet('full', 'cache')][string]$Set = 'full',
     [ValidateRange(1, 100)][int]$Repeats = 4,
     [ValidateRange(1, 100)][int]$RaceRepeats = 3,
+    [ValidateRange(1, 100)][int]$HogRepeats = 3,
     [string]$ImageDirectory = '',
     [string]$AssetDirectory = '',
     [string]$SaveDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$out = Join-Path $root ('out/bench/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-full')
+$out = Join-Path $root ('out/bench/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + "-$Set")
 New-Item -ItemType Directory -Path $out | Out-Null
 $common = @('-SkipBuildCheck')
 foreach ($pair in @(@('ImageDirectory', $ImageDirectory), @('AssetDirectory', $AssetDirectory), @('SaveDirectory', $SaveDirectory))) {
@@ -35,6 +44,18 @@ $phases = @(
     @{ name = 'race'
        arguments = @('-Configs', 'baseline', '-Repeats', "$RaceRepeats") }
 )
+if ($Set -eq 'cache') {
+    $solo = @('-Scenario', 'solo', '-FixedStep')
+    $phases = @(
+        @{ name = 'index'; arguments = $solo + @('-Configs', 'baseline,no-index-cache,constant-reuse,no-draw-timers', '-Repeats', "$Repeats") },
+        @{ name = 'hog'; arguments = $solo + @('-Configs', 'baseline,hog-64,hog-2048,hog-4096,hog-12288', '-Repeats', "$HogRepeats") }
+    )
+    $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($admin) {
+        $phases += @{ name = 'pmc'; arguments = $solo + @('-Configs', 'baseline,skip-draws', '-Repeats', '1', '-AllowDiagnosticRendering', '-RecordPmc') }
+    } else { Write-Warning 'Not an administrator PowerShell: the CPU-counter part (pmc) is left out.' }
+}
 $started = Get-Date
 foreach ($phase in $phases) {
     Write-Output ''
@@ -52,7 +73,7 @@ $minutes = [int]((Get-Date) - $started).TotalMinutes
 foreach ($python in @(@('py', '-3'), @('python'))) {
     if (-not (Get-Command $python[0] -ErrorAction SilentlyContinue)) { continue }
     $rest = @($python | Select-Object -Skip 1)
-    & $python[0] @rest (Join-Path $PSScriptRoot 'benchmark_summary.py') $out --report --minutes $minutes | Out-Null
+    & $python[0] @rest (Join-Path $PSScriptRoot 'benchmark_summary.py') $out --report --set $Set --minutes $minutes | Out-Null
     if (Test-Path -LiteralPath (Join-Path $out 'report.md')) { break }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $out 'report.md'))) { throw "No Python wrote report.md: the summaries are in $out\parts and $out\race." }

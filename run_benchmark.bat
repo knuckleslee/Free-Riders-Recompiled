@@ -4,6 +4,8 @@ rem   run_benchmark.bat speed        baseline against the polling it replaced fo
 rem   run_benchmark.bat pipelines    a new player first race, with and without the prepared pipelines
 rem   run_benchmark.bat exe          two builds, sfr_cpu_diagnostic_a.exe against _b.exe, in the same rounds
 rem   run_benchmark.bat report       what limits this PC: as it is, without drawing, at half resolution, 4 rounds; send the -shareable zip
+rem   run_benchmark.bat cache        the measurements Issue #65 asked for, unattended (about 2 hours; as administrator for the CPU counters):
+rem                                  index cache, constant reuse and the draw timers' cost (6 rounds), the L3 hog curve (3 rounds), counters with and without drawing
 rem   run_benchmark.bat full         the whole report, unattended (about 45 minutes): what each part costs and the limit (Time Attack), then a race's frame rate; one zip to send
 rem   run_benchmark.bat parts        what each part costs a frame: no drawing, half resolution, no sound output, main thread unpinned, 4 rounds (add solo)
 rem   run_benchmark.bat profile      where the main thread's time goes, with and without drawing, 2 rounds (add solo); profile.md stays on this PC
@@ -41,6 +43,7 @@ if /i "%MODE%"=="profile" (
     if "%2"=="" set REPEATS=2
 )
 if /i "%MODE%"=="full" if "%2"=="" set REPEATS=4
+if /i "%MODE%"=="cache" if "%2"=="" set REPEATS=6
 if /i "%MODE%"=="pipelines" (
     set CONFIGS=baseline,no-prewarm
     set EXTRA=-ColdPipelines
@@ -65,6 +68,10 @@ echo until it says it is done. Mode %MODE%, %REPEATS% rounds.
 echo.
 if /i "%MODE%"=="full" (
     powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\benchmark_all.ps1" -Repeats %REPEATS% %GAMEARGS%
+    goto after
+)
+if /i "%MODE%"=="cache" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\benchmark_all.ps1" -Set cache -Repeats %REPEATS% %GAMEARGS%
     goto after
 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\benchmark.ps1" -SkipBuildCheck -Configs %CONFIGS% -Repeats %REPEATS% %EXTRA% %GAMEARGS%

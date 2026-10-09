@@ -47,6 +47,9 @@ param(
     [switch]$Capped,                  # 60 fps as when playing, not as fast as it goes
     [switch]$ColdPipelines,           # every run starts without pipeline-cache: a new player's first race
     [switch]$KeepSaves,               # keep each run's copy of the save (save-<run>; 23 MB each), to see what the game wrote
+    # Each counted run's race is recorded with scripts/pmc-record.ps1 (the CPU's counters, and PresentMon
+    # when found) once 360 race frames in, into pmc-<run>.md here: needs an administrator PowerShell.
+    [switch]$RecordPmc,
     [string]$ImageDirectory = '',     # the game folders, when they are not where this checkout keeps them
     [string]$AssetDirectory = '',
     [string]$SaveDirectory = '',
@@ -54,6 +57,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
+if ($RecordPmc -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)) { throw '-RecordPmc needs an administrator PowerShell (the CPU counters are a kernel trace)' }
 function Get-BenchmarkSha256([string]$Path) {
     # Windows PowerShell hosts can expose Utility without its Get-FileHash
     # helper. Use the same streaming SHA-256 implementation directly.
@@ -446,7 +451,31 @@ function Get-RaceFps([string]$logPath) {
         if ($index -eq 1) { Write-Output '  (the game runs hidden; Ctrl+C here stops it and the benchmark)' }
         # A second at a time: one long WaitForExit holds Ctrl+C until it returns.
         $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
-        while (-not $process.WaitForExit(1000) -and (Get-Date) -lt $deadline) { }
+        $recorder = $null; $reader = $null; $racing = 0
+        while (-not $process.WaitForExit(1000) -and (Get-Date) -lt $deadline) {
+            if (-not $RecordPmc -or $name -eq 'warmup' -or $recorder) { continue }
+            # The run's own trace, read as the game writes it: the race 360 frames in starts the recording.
+            if (-not $reader) {
+                $runLog = Join-Path $Out "$name-$repeat.log"
+                if (-not (Test-Path -LiteralPath $runLog)) { continue }
+                $reader = [System.IO.StreamReader]::new([System.IO.FileStream]::new($runLog, 'Open', 'Read', 'ReadWrite'))
+            }
+            while ($racing -lt 360 -and $null -ne ($line = $reader.ReadLine())) {
+                if ($line.StartsWith('NATIVE_PRESENT ')) { if ($line.Contains(' racing=1')) { ++$racing } else { $racing = 0 } }
+            }
+            if ($racing -ge 360) {
+                $recorder = Start-Process -FilePath powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+                    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$(Join-Path $PSScriptRoot 'pmc-record.ps1')`"",
+                    '-Process', 'sfr_cpu_diagnostic.exe', '-Seconds', '45', '-OutDir', "`"$Out`"", '-Label', "$name-$repeat", '-NoPrompt')
+                Write-Output '  recording the CPU counters (45 s)'
+            }
+        }
+        if ($reader) { $reader.Dispose() }
+        # Its analysis runs on after the game: let it finish before the next run.
+        if ($recorder) {
+            $recorder.WaitForExit()
+            if (-not (Test-Path -LiteralPath (Join-Path $Out "pmc-$name-$repeat.md"))) { Write-Output '  the CPU-counter recording wrote no summary' }
+        }
         if (-not $process.HasExited) {
             Write-Output "  took over $TimeoutMinutes minutes: stopped"
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue

@@ -43,6 +43,17 @@ do not, nothing else runs. It ends with `out\bench\<time>-full\report.md`, both
 summaries in one file to paste whole, and `out\bench\<time>-full-shareable.zip`,
 the one file to attach. About 45 minutes on an i5-3470.
 
+`run_benchmark.bat cache` (`benchmark_all.ps1 -Set cache`) runs the cache-budget
+measurements the same way, all Time Attack stepped 1/60 s a frame: baseline,
+no-index-cache, constant-reuse and no-draw-timers (6 rounds); baseline and
+hog-64 to hog-12288, how much a frame depends on the shared L3 (3 rounds); and,
+from an administrator PowerShell, baseline and skip-draws once each with the
+CPU's counters recorded (`benchmark.ps1 -RecordPmc`, `scripts/pmc-record.ps1`:
+cycles and instructions of every thread of the game, and PresentMon's frames when
+it is found). Each summary then has a per-frame counters table (render-thread
+waits, kept indices, bytes streamed) and, with hog configs, an L3 table. Its
+report.md takes the counter summaries in. About 2 hours on an i5-3470.
+
 ## Two ways to run: does a change help, and how fast is the game
 
 | Question | Run | Why |

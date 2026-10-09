@@ -34,6 +34,12 @@ PRESENT = re.compile(r'^NATIVE_PRESENT .*\bframe=(\d+)\b')
 FIELD = re.compile(r'\b([a-z_0-9]+)=([^\s]+)')
 # The per-frame costs worth comparing, averaged over the measured frames.
 AVERAGED = ('draw_ms', 'present_ms', 'gpu_wait_ms', 'main_queued_ms', 'main_blocked_ms', 'main_ready_ms', 'pacing_ms')
+# Per-frame counters a newer build writes (the cache-budget measurements), averaged when present.
+COUNTERS = (('drain_ms', 'Waiting for the render thread, ms', 1), ('drain_waits', 'Waits for the render thread', 1),
+            ('kept_index_draws', 'Draws with kept indices', 1), ('indexed_draws', 'Indexed draws', 1),
+            ('index_source_bytes', 'Guest indices decoded, MB', 1e6), ('vertex_bytes', 'Vertex data drawn, MB', 1e6),
+            ('vertex_cached_bytes', 'of it from the vertex cache, MB', 1e6), ('texture_source_bytes', 'Guest texture data read, MB', 1e6),
+            ('ring_bytes', 'Upload ring taken, MB', 1e6))
 
 
 def holder_ms(text, guest):
@@ -84,6 +90,9 @@ def read_run(path, skip, timeline=None, fixed_step=False, draws=None):
                      'pipelines': int(fields.get('pipelines', 0)), 'pipeline_ms': float(fields.get('pipeline_ms', 0))}
             for name in AVERAGED:
                 frame[name] = float(fields.get(name, 0))
+            for name, _, _ in COUNTERS:
+                if name in fields:
+                    frame[name] = float(fields[name])
             frame['main_held_ms'] = holder_ms(fields.get('holders', ''), 1)
             frames.append(frame)
     ended = 'present-limit' if stop and 'present-limit' in stop else (stop or 'no STOP line (killed or crashed)')
@@ -399,6 +408,8 @@ def summarise(directory, skip, window_start=20.0, window_end=75.0):
                 rows.append((config, repeat, None, ended))
                 continue
             stats = describe(frames)
+            stats['counters'] = {name: statistics.fmean(f[name] for f in frames) for name, _, _ in COUNTERS
+                                 if all(name in f for f in frames)}
             stats['timeline'] = timeline
             stats['draw_counts'] = draw_counts
             stats['race_seconds'] = timeline[-1][0] if timeline else 0
@@ -427,6 +438,12 @@ def summarise(directory, skip, window_start=20.0, window_end=75.0):
     if stalls:
         lines += ['', stalls]
     lines += ['', breakdown_table(rows)]
+    counters = counters_table(rows)
+    if counters:
+        lines += ['', counters]
+    hog = hog_table(rows)
+    if hog:
+        lines += ['', hog]
     limit = bottleneck(rows, capped=settings.get('capped') == 'True')
     if limit:
         lines += ['', limit]
@@ -582,6 +599,58 @@ def breakdown_table(rows):
     if all(s['main_blocked_ms'] == 0 for _, _, s in good):
         lines += ['', '**This executable did not record the main thread\'s waits** (main_blocked_ms is all 0: an older build did not count them when the main thread runs without the permit),'
                       ' so the waits are in "Main thread running".']
+    return '\n'.join(lines)
+
+
+def counters_table(rows):
+    """Each setting's per-frame counters (COUNTERS), the median of its runs' means, when its build writes them."""
+    good, _ = valid_runs(rows)
+    by_config = {}
+    for config, _, stats in good:
+        by_config.setdefault(config, []).append(stats.get('counters', {}))
+    present = [(name, title, scale) for name, title, scale in COUNTERS
+               if any(name in c for runs in by_config.values() for c in runs)]
+    if not present:
+        return ''
+    lines = ['### Per-frame counters', '',
+             'What a frame streams and waits for (every measured frame, median of the runs). The upload ring is write-combined:'
+             ' what is taken there does not pass through the caches.', '',
+             '| Setting | ' + ' | '.join(title for _, title, _ in present) + ' |', '| --- |' + ' ---: |' * len(present)]
+    for config, runs in by_config.items():
+        cells = []
+        for name, _, scale in present:
+            values = [c[name] for c in runs if name in c]
+            cells.append(f'{statistics.median(values) / scale:.2f}' if values else '-')
+        lines.append(f'| {config} | ' + ' | '.join(cells) + ' |')
+    return '\n'.join(lines)
+
+
+HOG = re.compile(r'^hog-(\d+)$')
+
+
+def hog_table(rows):
+    """How much the frame depends on the shared L3: each hog-N against hog-64 (which takes a core but not the L3), round by round."""
+    good, _ = valid_runs(rows)
+    metric = 'window_fps' if all(stats.get('window_fps') for _, _, stats in good) else 'fps'
+    by_config = {}
+    for config, repeat, stats in good:
+        by_config.setdefault(config, {})[repeat] = stats[metric]
+    if 'hog-64' not in by_config:
+        return ''
+    sizes = sorted((int(HOG.match(c).group(1)), c) for c in by_config if HOG.match(c) and c != 'hog-64')
+    if not sizes:
+        return ''
+    lines = ['### How much a frame depends on the shared L3', '',
+             'A thread keeps N KB of its own in the caches (SFR_CACHE_HOG_KB). hog-64 fits that core\'s L2, so it takes a core and none of the L3:'
+             ' the larger ones are compared with it, round by round, so the core they take cancels out.', '',
+             '| Setting | KB held | Ratio to hog-64 each round | Median |', '| --- | ---: | --- | ---: |']
+    control = by_config['hog-64']
+    for kb, config in sizes:
+        rounds = sorted(set(control) & set(by_config[config]))
+        ratios = [by_config[config][r] / control[r] for r in rounds]
+        middle = f'{statistics.median(ratios):.2f}' if ratios else '-'
+        lines.append(f'| {config} | {kb} | {" ".join(f"{r:.2f}" for r in ratios) or "-"} | {middle} |')
+    lines += ['', 'A median well below 1.00 at a size the L3 can hold means the frame depends on that much of it.']
     return '\n'.join(lines)
 
 
@@ -773,24 +842,34 @@ REPORT_PARTS = (('race', 'The frame rate a player gets (Free Race with rivals, e
                 ('parts', 'What each part costs and what limits this PC (Time Attack, fixed step)'))
 
 
-def combine_report(directory, minutes=None):
+# run_benchmark.bat cache (benchmark_all.ps1 -Set cache): the cache-budget measurements.
+CACHE_PARTS = (('index', 'Index cache, and what the draw timers cost (Time Attack, fixed step)'),
+               ('hog', 'How much a frame depends on the shared L3 (Time Attack, fixed step)'),
+               ('pmc', 'CPU counters of one baseline run (Time Attack, fixed step)'))
+
+
+def combine_report(directory, minutes=None, parts=REPORT_PARTS, name='full'):
     """report.md of a full run: the PC once (from the first part's summary that has it), then
     each part's summary from its method on. Kept here, not in the PowerShell script, because
     Windows PowerShell reads a script without a byte order mark in the system's code page."""
-    texts = {name: (Path(directory) / name / 'summary.md').read_text(encoding='utf-8')
-             for name, _ in REPORT_PARTS if (Path(directory) / name / 'summary.md').is_file()}
-    lines = ['## Performance report (run_benchmark.bat full' + (f', {minutes} minutes' if minutes is not None else '') + ')', '']
+    texts = {part: (Path(directory) / part / 'summary.md').read_text(encoding='utf-8')
+             for part, _ in parts if (Path(directory) / part / 'summary.md').is_file()}
+    lines = [f'## Performance report (run_benchmark.bat {name}' + (f', {minutes} minutes' if minutes is not None else '') + ')', '']
     hardware = next((text[:text.index('### How it was measured')].strip() for text in texts.values()
                      if '### Hardware and drivers' in text and '### How it was measured' in text), '')
     if hardware:
         lines += [hardware, '']
-    for name, title in REPORT_PARTS:
-        if name not in texts:
+    for part, title in parts:
+        if part not in texts:
             lines += [f'## {title}', '', '(This part did not finish.)', '']
             continue
-        text = texts[name]
+        text = texts[part]
         at = text.find('### How it was measured')
         lines += [f'## {title}', '', (text[at:] if at >= 0 else text).strip(), '']
+        # A recorded run's counter summaries (scripts/pmc-record.ps1), which name no other program.
+        for pmc in sorted((Path(directory) / part).glob('pmc-*.md')):
+            text = pmc.read_text(encoding='utf-8-sig').strip()
+            lines += ['\n'.join('##' + line if line.startswith('#') else line for line in text.splitlines()), '']
     report = '\n'.join(lines).rstrip() + '\n'
     (Path(directory) / 'report.md').write_text(report, encoding='utf-8')
     return report
@@ -801,12 +880,13 @@ def main():
     parser.add_argument('directory')
     parser.add_argument('--report', action='store_true', help='directory is a full run (benchmark_all.ps1): write its report.md')
     parser.add_argument('--minutes', type=int, help='how long the full run took, for report.md')
+    parser.add_argument('--set', default='full', choices=('full', 'cache'), help='which benchmark_all.ps1 set the directory is')
     parser.add_argument('--skip', type=int, default=600, help='race frames left out at the start (default 600)')
     parser.add_argument('--window-start', type=float, default=20.0, help='race seconds where the common stretch begins')
     parser.add_argument('--window-end', type=float, default=75.0, help='race seconds where it ends at the latest')
     args = parser.parse_args()
     if args.report:
-        print(combine_report(args.directory, args.minutes))
+        print(combine_report(args.directory, args.minutes, CACHE_PARTS if args.set == 'cache' else REPORT_PARTS, args.set))
         return
     table, _ = summarise(args.directory, args.skip, args.window_start, args.window_end)
     print(table)

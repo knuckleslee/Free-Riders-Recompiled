@@ -179,6 +179,44 @@ class FullReportTest(unittest.TestCase):
             self.assertIn('(This part did not finish.)', report.split('## What each part costs')[0])
 
 
+class CacheBudgetTest(unittest.TestCase):
+    def test_hog_sizes_are_compared_with_the_64_kb_control_round_by_round(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for repeat in (1, 2, 3):
+                write_race(directory, f'hog-64-{repeat}.log', 20, race_frames=400)
+                write_race(directory, f'hog-4096-{repeat}.log', 25, race_frames=400)
+            table, _ = bench.summarise(directory, 0)
+            self.assertIn('### How much a frame depends on the shared L3', table)
+            self.assertIn('| hog-4096 | 4096 | 0.80 0.80 0.80 | 0.80 |', table)
+
+    def test_counters_are_averaged_and_bytes_shown_in_mb(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_race(directory, 'baseline-1.log', 20, race_frames=300, drain_ms=0.5, ring_bytes=19000000)
+            table, _ = bench.summarise(directory, 0)
+            row = next(line for line in table.splitlines() if line.startswith('| baseline |') and '19.00' in line)
+            self.assertIn('| 0.50 |', row)
+
+    def test_no_counters_table_for_an_older_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_race(directory, 'baseline-1.log', 20, race_frames=300)
+            table, _ = bench.summarise(directory, 0)
+            self.assertNotIn('### Per-frame counters', table)
+
+    def test_cache_report_takes_its_parts_and_the_recorded_counters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ('index', 'hog', 'pmc'):
+                (Path(directory) / name).mkdir()
+                write_race(Path(directory) / name, 'baseline-1.log', 20, race_frames=200)
+                table, _ = bench.summarise(Path(directory) / name, 0)
+                (Path(directory) / name / 'summary.md').write_text(table, encoding='utf-8')
+            (Path(directory) / 'pmc' / 'pmc-baseline-1.md').write_text('# PMC summary: x.exe\n\n## Process 1\n', encoding='utf-8')
+            report = bench.combine_report(directory, 120, bench.CACHE_PARTS, 'cache')
+            self.assertTrue(report.startswith('## Performance report (run_benchmark.bat cache, 120 minutes)'))
+            self.assertIn('### PMC summary: x.exe', report)
+            self.assertIn('#### Process 1', report)
+            self.assertLess(report.index('## Index cache'), report.index('## How much a frame depends'))
+
+
 class StallTest(unittest.TestCase):
     def test_runs_that_stood_still_are_named(self):
         with tempfile.TemporaryDirectory() as directory:
