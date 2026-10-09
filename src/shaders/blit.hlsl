@@ -3,8 +3,8 @@
 // build time to DXIL and SPIR-V (CMakeLists.txt, sfr_embed_shader).
 // The pixel shader also draws the touch controls (touch_controls.h) over the
 // image: per circle (x, y, radius, state) in image coordinates, state 0 for
-// none; the stick's knob is at g_AreaKnob.zw. A state of 3 to 4 is the Kinect
-// Guide gesture's gauge instead (state - 3 is how far the hold has got): a
+// none; the stick's knob is at g_AreaKnob.zw. A state of 3 to 4 is the Pause
+// Gesture's gauge instead (state - 3 is how far the hold has got): a
 // ring that fills clockwise from the top, on a dark disc.
 
 struct BlitConstants {
@@ -40,7 +40,7 @@ static const float3 g_Colors[7] = {
     float3(1.0, 1.0, 1.0),     // START
 };
 
-// The Guide gesture's gauge at c (x, y, radius, 3 + progress).
+// The Pause Gesture's gauge at c (x, y, radius, 3 + progress).
 float3 gauge(float3 color, float2 image, float4 c, float2 pixel) {
     const float2 d = (image - c.xy) * float2(16.0 / 9.0, 1.0);
     const float r = length(d);

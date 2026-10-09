@@ -59,8 +59,8 @@ launcher「體感與攝影機」分頁的「攝影機」（`SFR_CAMERA`）有三
    一張畫面移動 3 公分以上就完全跟上，不延遲；單張跳超過 25 公分的畫面忽略，下一張也一樣才跟上。
    手的深度和身體其他部位照原樣傳給遊戲。比賽中手是動作，任何延遲都有代價，所以完全不處理。
    `SFR_MENU_HAND_STEADY=0` 關閉。
-   webcam 的骨架也會判斷 Kinect Guide 手勢（左手斜下 45 度停 2 秒暫停比賽），見
-   [Kinect 說明](kinect-sensor.md)的「Kinect Guide 手勢」。
+   webcam 的骨架也會判斷暫停手勢（Pause Gesture：右手垂下、左手斜下 45 度舉著，暫停比賽），見
+   [Kinect 說明](kinect-sensor.md)的「Pause Gesture／暫停手勢」。
 7. [`camera_player`](../src/camera_player.h)：上面幾步跑在自己的執行緒上，
    遊戲那格要骨架時只拿最新一份，並取得最後有效姿勢的時間。
    [`nui_hooks`](../src/nui_hooks.cpp) 的 `sub_827707B0` 依姿勢新鮮度與手把操作

@@ -1,22 +1,22 @@
-#include "guide_gesture.h"
+#include "pause_gesture.h"
 
 #include <cmath>
 #include <cstdlib>
 
 namespace sfr {
 
-GuideGesture GuideGesture::from_environment() {
-    const char* const off = std::getenv("SFR_GUIDE_GESTURE");
+PauseGesture PauseGesture::from_environment() {
+    const char* const off = std::getenv("SFR_PAUSE_GESTURE");
     double seconds = 2.0;
-    if (const char* text = std::getenv("SFR_GUIDE_GESTURE_SECONDS"); text && *text) {
+    if (const char* text = std::getenv("SFR_PAUSE_GESTURE_SECONDS"); text && *text) {
         char* end = nullptr;
         const double value = std::strtod(text, &end);
         if (end != text && value >= 0.5 && value <= 10.0) seconds = value;
     }
-    return GuideGesture(!(off && *off == '0'), seconds);
+    return PauseGesture(!(off && *off == '0'), seconds);
 }
 
-bool GuideGesture::in_pose(const SkeletonJoints& joints) {
+bool PauseGesture::in_pose(const SkeletonJoints& joints) {
     namespace joint = nui_joint;
     const auto& shoulder = joints[joint::shoulder_left];
     const auto& elbow = joints[joint::elbow_left];
@@ -33,15 +33,22 @@ bool GuideGesture::in_pose(const SkeletonJoints& joints) {
     if (!(outward > 0) || !(down > 0)) return false;
     const float below = std::atan2(down, outward) * 180.0f / 3.14159265f;
     if (below < 25.0f || below > 65.0f) return false;
-    return std::fabs(hand[2] - shoulder[2]) <= 0.5f * reach;  // sideways, not at the sensor
+    if (std::fabs(hand[2] - shoulder[2]) > 0.5f * reach) return false;  // sideways, not at the sensor
+    // The other arm down by the side: the right hand below its shoulder,
+    // within 30 degrees of straight down.
+    const auto& right_shoulder = joints[joint::shoulder_right];
+    const auto& right_hand = joints[joint::hand_right];
+    const float hang = right_shoulder[1] - right_hand[1];
+    const float aside = std::hypot(right_hand[0] - right_shoulder[0], right_hand[2] - right_shoulder[2]);
+    return hang > 0.15f && std::atan2(aside, hang) * 180.0f / 3.14159265f <= 30.0f;
 }
 
-void GuideGesture::forget() {
+void PauseGesture::forget() {
     holding_ = false;
     fired_ = false;
 }
 
-bool GuideGesture::update(const SkeletonJoints& joints, Clock::time_point now) {
+bool PauseGesture::update(const SkeletonJoints& joints, Clock::time_point now) {
     if (!enabled_) return false;
     if (in_pose(joints)) {
         if (!holding_) {
@@ -59,7 +66,7 @@ bool GuideGesture::update(const SkeletonJoints& joints, Clock::time_point now) {
     return true;
 }
 
-float GuideGesture::progress(Clock::time_point now) const {
+float PauseGesture::progress(Clock::time_point now) const {
     if (!holding_ || fired_) return 0.0f;
     const double held = std::chrono::duration<double>(now - since_).count();
     return float(held >= hold_seconds_ ? 1.0 : held / hold_seconds_);

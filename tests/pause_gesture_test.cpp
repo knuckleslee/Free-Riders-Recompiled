@@ -1,4 +1,4 @@
-#include "guide_gesture.h"
+#include "pause_gesture.h"
 
 #include <cmath>
 #include <iostream>
@@ -8,7 +8,7 @@ namespace {
 void require(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
 }
-using Clock = sfr::GuideGesture::Clock;
+using Clock = sfr::PauseGesture::Clock;
 namespace joint = sfr::nui_joint;
 
 // A player 2.5 m away, left shoulder at -0.18 (the player's left is -x),
@@ -31,19 +31,25 @@ sfr::SkeletonJoints body(float degrees, float bend = 0.0f, float forward = 0.0f)
 Clock::time_point at(double seconds) { return Clock::time_point{} + std::chrono::milliseconds(int64_t(seconds * 1000)); }
 
 void the_pose() {
-    require(sfr::GuideGesture::in_pose(body(45)), "the left arm out and down at 45 degrees is the pose");
-    require(sfr::GuideGesture::in_pose(body(30)) && sfr::GuideGesture::in_pose(body(60)), "30 to 60 degrees are the pose");
-    require(!sfr::GuideGesture::in_pose(body(0)), "an arm straight out sideways is not");
-    require(!sfr::GuideGesture::in_pose(body(85)), "an arm hanging down is not");
-    require(!sfr::GuideGesture::in_pose(body(45, 0.35f)), "a bent arm is not");
-    require(!sfr::GuideGesture::in_pose(body(45, 0.0f, 0.45f)), "an arm pointing at the sensor is not");
+    require(sfr::PauseGesture::in_pose(body(45)), "the left arm out and down at 45 degrees is the pose");
+    require(sfr::PauseGesture::in_pose(body(30)) && sfr::PauseGesture::in_pose(body(60)), "30 to 60 degrees are the pose");
+    require(!sfr::PauseGesture::in_pose(body(0)), "an arm straight out sideways is not");
+    require(!sfr::PauseGesture::in_pose(body(85)), "an arm hanging down is not");
+    require(!sfr::PauseGesture::in_pose(body(45, 0.35f)), "a bent arm is not");
+    require(!sfr::PauseGesture::in_pose(body(45, 0.0f, 0.45f)), "an arm pointing at the sensor is not");
     auto right = body(45);
     for (const auto j : {joint::elbow_left, joint::hand_left}) right[j][0] = -right[j][0];
-    require(!sfr::GuideGesture::in_pose(right), "the left hand across the body is not");
+    require(!sfr::PauseGesture::in_pose(right), "the left hand across the body is not");
+    auto both = body(45);
+    both[joint::hand_right] = {0.6f, 0.2f, 2.5f};
+    require(!sfr::PauseGesture::in_pose(both), "with the right arm out as well it is not");
+    auto raised = body(45);
+    raised[joint::hand_right] = {0.2f, 0.9f, 2.5f};
+    require(!sfr::PauseGesture::in_pose(raised), "with the right hand up it is not");
 }
 
 void it_fires_once_after_the_hold() {
-    sfr::GuideGesture guide(true, 2.0);
+    sfr::PauseGesture guide(true, 2.0);
     int fired = 0;
     for (double t = 0; t <= 3.0; t += 1.0 / 30.0)
         if (guide.update(body(45), at(t))) {
@@ -59,7 +65,7 @@ void it_fires_once_after_the_hold() {
 }
 
 void a_short_glitch_does_not_restart_the_wait() {
-    sfr::GuideGesture guide(true, 2.0);
+    sfr::PauseGesture guide(true, 2.0);
     bool fired = false;
     for (double t = 0; t <= 2.1 && !fired; t += 1.0 / 30.0) {
         const bool glitch = t > 1.0 && t < 1.1;  // three pictures lost the arm
@@ -67,7 +73,7 @@ void a_short_glitch_does_not_restart_the_wait() {
     }
     require(fired, "a tenth of a second without the pose is forgiven");
 
-    sfr::GuideGesture again(true, 2.0);
+    sfr::PauseGesture again(true, 2.0);
     fired = false;
     for (double t = 0; t <= 2.1 && !fired; t += 1.0 / 30.0) {
         const bool away = t > 1.0 && t < 1.5;
@@ -77,10 +83,10 @@ void a_short_glitch_does_not_restart_the_wait() {
 }
 
 void it_can_be_turned_off() {
-    sfr::GuideGesture guide(false);
+    sfr::PauseGesture guide(false);
     bool fired = false;
     for (double t = 0; t <= 3.0; t += 1.0 / 30.0) fired = fired || guide.update(body(45), at(t));
-    require(!fired, "SFR_GUIDE_GESTURE=0 never fires");
+    require(!fired, "SFR_PAUSE_GESTURE=0 never fires");
 }
 }
 
@@ -91,7 +97,7 @@ int main() {
         a_short_glitch_does_not_restart_the_wait();
         it_can_be_turned_off();
     } catch (const std::exception& error) {
-        std::cerr << "guide_gesture_test: " << error.what() << '\n';
+        std::cerr << "pause_gesture_test: " << error.what() << '\n';
         return 1;
     }
     return 0;

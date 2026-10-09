@@ -122,19 +122,20 @@ COM 介面依 SDK 2.0 的 `Kinect.h` 宣告到用得到的最後一個方法為�
 - [`nui_race_hooks.cpp`](../src/nui_race_hooks.cpp)：有實體感測器時
   （`nui_body_from_sensor()`），比賽保留原生身體紀錄與「On your Gear!」身體量測。
   深度串流可用時沿用原版判定，否則套用上述骨架轉向與蹲跳補充判定。
-- **Kinect Guide 手勢（暫停）**：和 Xbox 360 一樣，左手伸直、往身體外側斜下約 45 度舉著
-  約 2 秒，比賽（或重播）就會暫停：[`guide_gesture.h`](../src/guide_gesture.h) 判斷姿勢，
-  觸發時在下一次輸入更新送出比賽中的 START，也就是遊戲聽到的 `pauseopen`，和語音說「暫停」走同一條路。
-  手臂要接近伸直（肩到手至少是上臂加前臂的 85%）、手在肩膀外側下方 25 到 65 度、
-  而且是朝旁邊而不是朝感應器伸；Kinect 追蹤到的任何人都可以觸發，webcam 則是畫面中的玩家。
-  觸發一次後要先放下手臂才能再觸發；中途有 0.2 秒以內的追蹤中斷不會重新計時。
-  和主機一樣，舉著的時候畫面左下角會出現一個圓形進度環，從正上方順時針填滿，滿了就暫停
-  （手勢舉超過 0.3 秒才出現，免得比賽中手臂剛好經過這個姿勢時閃一下；只在比賽中顯示）。
-  進度環由畫面最後輸出的 blit 著色器畫（[`blit.hlsl`](../src/shaders/blit.hlsl)），借用觸控按鈕
-  START 的那一格，顯示時那一格的觸控按鈕暫時不畫。
-  在選單中不做事（主機上那是系統的 Kinect Guide，這裡沒有）。`SFR_GUIDE_GESTURE=0` 關閉，
-  `SFR_GUIDE_GESTURE_SECONDS` 改停留秒數（0.5 到 10，預設 2）。log：`NUI_GUIDE_GESTURE racing=1 pause`。
-  尚未實機測試。
+- **Pause Gesture／暫停手勢**：Xbox 360 Kinect 的系統暫停手勢（universal pause）：右手垂在身側、
+  左手伸直往身體外側斜下約 45 度舉著。主機上這是系統的功能，不是遊戲的：舉著時左下角出現進度圖示，
+  然後叫出遊戲的暫停選單。這裡由 [`pause_gesture.h`](../src/pause_gesture.h) 判斷姿勢，舉滿
+  `SFR_PAUSE_GESTURE_SECONDS` 秒（預設 2；主機實際的秒數沒有查到確切數字）後，在下一次輸入更新送出
+  比賽中的 START，也就是遊戲聽到的 `pauseopen`，和語音說「暫停」走同一條路。
+  條件：左臂接近伸直（肩到手至少是上臂加前臂的 85%）、左手在肩膀外側下方 25 到 65 度、
+  朝旁邊而不是朝感應器伸，而且右手垂在右肩下方、離正下方 30 度以內。Kinect 追蹤到的任何人都可以
+  觸發，webcam 則是畫面中的玩家。觸發一次後要先放下手臂才能再觸發；中途 0.2 秒以內的追蹤中斷不會重新計時。
+  舉著的時候畫面左下角會出現圓形進度環，從正上方順時針填滿，滿了就暫停（舉超過 0.3 秒才出現，
+  免得比賽中手臂剛好經過這個姿勢時閃一下；只在比賽中顯示）。進度環的樣式是這裡自己畫的，
+  不是主機的原圖，也沒有主機的提示音。它由畫面最後輸出的 blit 著色器畫
+  （[`blit.hlsl`](../src/shaders/blit.hlsl)），借用觸控按鈕 START 的那一格，顯示時那一格的觸控按鈕暫時不畫。
+  在選單中不做事（主機上那會打開系統的 Kinect Guide，這裡沒有）。`SFR_PAUSE_GESTURE=0` 關閉；
+  `SFR_PAUSE_GESTURE_SECONDS` 範圍 0.5 到 10。log：`NUI_PAUSE_GESTURE racing=1 pause`。尚未實機測試。
 - **語音指令**：launcher 的「語音指令」（`SFR_VOICE=1`，Windows）用 Windows 語音辨識（SAPI）
   聽預設麥克風。Kinect 的麥克風陣列在 Windows 上就是一個錄音裝置，設成預設就會用它。
   [`voice_commands.cpp`](../src/voice_commands.cpp) 列出聽的詞：遊戲詞彙的 start、ok、back、

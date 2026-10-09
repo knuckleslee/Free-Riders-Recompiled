@@ -5,7 +5,7 @@
 #include "kinect_sensor.h"
 #include "camera_debug.h"
 #include "camera_input.h"
-#include "guide_gesture.h"
+#include "pause_gesture.h"
 #include "nui_skeleton.h"
 #include "nui_player_routing.h"
 #include "nui_menu_progress.h"
@@ -58,23 +58,23 @@ std::atomic<bool> sensor_depth{false};
 std::atomic<uint64_t> kinect_generation{0};  // kinect_frame_generation
 sfr::KinectFrame kinect_frame;
 sfr::KinectPlayerSlots kinect_players;
-// The Kinect Guide gesture (guide_gesture.h): seen on the skeleton hook,
+// The Pause Gesture (pause_gesture.h): seen on the skeleton hook,
 // heard as the pause command by the next input update.
-sfr::GuideGesture guide_gesture=sfr::GuideGesture::from_environment();
-std::atomic<bool> guide_pause{false};
-void watch_guide_gesture(const sfr::SkeletonJoints& joints,bool racing) {
+sfr::PauseGesture pause_gesture=sfr::PauseGesture::from_environment();
+std::atomic<bool> pause_requested{false};
+void watch_pause_gesture(const sfr::SkeletonJoints& joints,bool racing) {
     const auto now=std::chrono::steady_clock::now();
-    const bool fired=guide_gesture.update(joints,now);
+    const bool fired=pause_gesture.update(joints,now);
     // The gauge in the lower left, as the console drew it, once the arm has
     // been up for a moment (a pose passed through in play does not flash
     // it), and only where the gesture does something.
-    const float progress=guide_gesture.progress(now);
-    sfr::publish_guide_gauge(racing && progress>=0.15f ? progress : 0.0f);
+    const float progress=pause_gesture.progress(now);
+    sfr::publish_pause_gauge(racing && progress>=0.15f ? progress : 0.0f);
     if(!fired) return;
     // A race (or its replay) pauses; elsewhere the console would have opened
-    // its own Guide, which there is none of here.
-    if(racing) guide_pause.store(true,std::memory_order_relaxed);
-    std::cerr << "NUI_GUIDE_GESTURE racing=" << racing << (racing?" pause":" ignored") << '\n';
+    // its own Kinect Guide, which there is none of here.
+    if(racing) pause_requested.store(true,std::memory_order_relaxed);
+    std::cerr << "NUI_PAUSE_GESTURE racing=" << racing << (racing?" pause":" ignored") << '\n';
 }
 // A real Kinect's skeletons reach the title as the sensor gives them: in the
 // sensor's own six slots, under its own tracking ids, so the depth image's
@@ -527,8 +527,8 @@ SFR_INPUT_HOOK(sub_827707B0) {
             static const sfr::SkeletonJoints nobody{};
             const sfr::SkeletonJoints* posed=&nobody;
             for(const sfr::KinectBody& body:kinect_frame.bodies)
-                if(sfr::GuideGesture::in_pose(body.joints)) { posed=&body.joints; break; }
-            watch_guide_gesture(*posed,racing);
+                if(sfr::PauseGesture::in_pose(body.joints)) { posed=&body.joints; break; }
+            watch_pause_gesture(*posed,racing);
         }
         if((kinect_frame.bodies.size()>=2)!=second_present) {
             second_present=kinect_frame.bodies.size()>=2;
@@ -549,10 +549,10 @@ SFR_INPUT_HOOK(sub_827707B0) {
                                                   sfr::CameraInputSelection::Clock::now());
     const bool was_camera=sfr::camera_motion_active();
     camera_input_active.store(use_camera,std::memory_order_relaxed);
-    if(use_camera) watch_guide_gesture(camera_joints,racing);
+    if(use_camera) watch_pause_gesture(camera_joints,racing);
     else {
-        guide_gesture.forget();
-        sfr::publish_guide_gauge(0.0f);
+        pause_gesture.forget();
+        sfr::publish_pause_gauge(0.0f);
     }
     if(use_camera!=was_camera)
         std::cerr<<"NUI_INPUT_SOURCE player=0 source="<<(use_camera?"camera":"controller")
@@ -938,10 +938,10 @@ SFR_MENU_HOOK(sub_82494658) {
             return;
         }
     }
-    // The Guide gesture held (watch_guide_gesture): START in a race, which
+    // The Pause Gesture held (watch_pause_gesture): START in a race, which
     // the title hears as "pauseopen". Left for a later frame when a word
     // above was heard instead.
-    if(guide_pause.exchange(false,std::memory_order_relaxed) && racing) spoken|=pad::start;
+    if(pause_requested.exchange(false,std::memory_order_relaxed) && racing) spoken|=pad::start;
     const auto word=sfr::NuiSpeechEmulation::hear(spoken,racing);
     if(word==sfr::NuiSpeechEmulation::Word::none) return;
     static bool written=false;
