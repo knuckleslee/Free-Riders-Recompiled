@@ -5,7 +5,8 @@
 // image: per circle (x, y, radius, state) in image coordinates, state 0 for
 // none; the stick's knob is at g_AreaKnob.zw. A state of 3 to 4 is the Pause
 // Gesture's gauge instead (state - 3 is how far the hold has got): a
-// ring that fills clockwise from the top, on a dark disc.
+// ring that fills clockwise from the top, on a dark disc, around a figure in
+// the pose.
 
 struct BlitConstants {
     float4 areaKnob;   // sampled area (xy), stick knob (zw)
@@ -40,6 +41,25 @@ static const float3 g_Colors[7] = {
     float3(1.0, 1.0, 1.0),     // START
 };
 
+// Distance from p to the segment a-b.
+float segment(float2 p, float2 a, float2 b) {
+    const float2 pa = p - a, ba = b - a;
+    return length(pa - ba * saturate(dot(pa, ba) / dot(ba, ba)));
+}
+
+// A figure in the pose, seen as in a mirror (the player's left arm out to the
+// screen's left, the right one down), in units of the gauge's radius, +y down.
+float figure(float2 p, float edge) {
+    float d = length(p - float2(0.0, -0.42)) - 0.12;                         // head
+    d = min(d, segment(p, float2(-0.1, -0.24), float2(0.1, -0.24)) - 0.05);    // shoulders
+    d = min(d, segment(p, float2(0.0, -0.24), float2(0.0, 0.12)) - 0.065);     // body
+    d = min(d, segment(p, float2(0.0, 0.12), float2(-0.13, 0.5)) - 0.055);     // legs
+    d = min(d, segment(p, float2(0.0, 0.12), float2(0.13, 0.5)) - 0.055);
+    d = min(d, segment(p, float2(0.1, -0.24), float2(0.16, 0.12)) - 0.05);     // right arm, down
+    d = min(d, segment(p, float2(-0.1, -0.24), float2(-0.42, 0.08)) - 0.055);  // left arm, out at 45
+    return 1.0 - smoothstep(-edge, edge, d);
+}
+
 // The Pause Gesture's gauge at c (x, y, radius, 3 + progress).
 float3 gauge(float3 color, float2 image, float4 c, float2 pixel) {
     const float2 d = (image - c.xy) * float2(16.0 / 9.0, 1.0);
@@ -51,11 +71,10 @@ float3 gauge(float3 color, float2 image, float4 c, float2 pixel) {
     float turn = atan2(d.x, -d.y) / 6.2831853;  // 0 at the top, clockwise
     if (turn < 0.0) turn += 1.0;
     const float filled = step(turn, c.w - 3.0);
-    const float hub = 1.0 - smoothstep(c.z * 0.22 - edge, c.z * 0.22 + edge, r);
     color = lerp(color, float3(0.05, 0.07, 0.1), disc_alpha * 0.55);
     color = lerp(color, float3(0.55, 0.6, 0.65), ring * (1.0 - filled) * 0.6);
     color = lerp(color, float3(0.45, 0.9, 1.0), ring * filled * 0.95);
-    return lerp(color, float3(1.0, 1.0, 1.0), hub * 0.85);
+    return lerp(color, float3(1.0, 1.0, 1.0), figure(d / c.z, edge / c.z) * 0.9);
 }
 
 // A soft disc with a brighter rim; alpha 0 outside.
