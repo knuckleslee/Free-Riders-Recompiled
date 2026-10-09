@@ -3,6 +3,8 @@
 #include "guest_memory.h"
 #include "camera_player.h"
 #include "kinect_sensor.h"
+#include "kinect_preview.h"
+#include "kinect_tuner.h"
 #include "camera_debug.h"
 #include "camera_input.h"
 #include "pause_gesture.h"
@@ -52,6 +54,9 @@ bool camera_has_joints = false;
 // Its skeletons go to the title untouched, and the race reads them through
 // the title's own detectors instead of the pad (nui_body_from_sensor).
 std::unique_ptr<sfr::KinectSensor> kinect;
+// The menu's Kinect adjustment window over that sensor (kinect_tuner.h).
+std::mutex tuner_lock;
+std::unique_ptr<sfr::KinectPreviewWindow> tuner;
 std::once_flag kinect_start_once;
 std::atomic<bool> sensor_body{false};
 std::atomic<bool> sensor_depth{false};
@@ -127,6 +132,19 @@ void start_kinect() {
 }
 
 namespace sfr {
+KinectTuner open_kinect_tuner() {
+    std::lock_guard guard(tuner_lock);
+    if(tuner && !tuner->closed()) return KinectTuner::already_open;
+    if(!kinect) return KinectTuner::unavailable;
+    tuner.reset();  // a closed one: its thread has ended
+    tuner=KinectPreviewWindow::open_over(*kinect);
+    std::cerr << "NUI_KINECT_TUNER opened=" << (tuner?1:0) << '\n';
+    return tuner ? KinectTuner::opened : KinectTuner::unavailable;
+}
+bool kinect_tuner_open() {
+    std::lock_guard guard(tuner_lock);
+    return tuner && !tuner->closed();
+}
 bool camera_motion_active() { return camera_input_active.load(std::memory_order_relaxed); }
 uint64_t camera_pose_generation() { return camera_pose_counter.load(std::memory_order_relaxed); }
 uint64_t camera_motion_clock_ns() {
@@ -468,6 +486,11 @@ SFR_INPUT_HOOK(sub_827707B0) {
         // Turned once per new frame: the last one is kept as it was turned.
         const bool received=kinect->next(kinect_frame);
         const bool expired=sfr::kinect_expire_frame(kinect_frame,std::chrono::steady_clock::now());
+        // The adjustment window sees the frames the game reads, not its own.
+        if(received) {
+            std::lock_guard guard(tuner_lock);
+            if(tuner && !tuner->closed()) tuner->show_frame(kinect_frame);
+        }
         if(received || expired) {
             // The title stores two fully tracked body indices, even though
             // the sensor frame has six slots. Keep the same two real bodies

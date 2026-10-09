@@ -53,6 +53,12 @@ void draw_image(HDC dc, const RECT& area, const std::vector<uint32_t>& pixels, i
 
 struct KinectPreviewWindow::Impl {
     bool chinese = false;
+    // Over the game's sensor (open_over): borrowed, never opened or closed
+    // here, and its skeleton frames come from the game (handed).
+    KinectSensor* borrowed = nullptr;
+    std::mutex handed_lock;
+    KinectFrame handed;
+    bool handed_new = false;
     mutable std::mutex lock;
     std::shared_ptr<KinectSensor> sensor;  // under lock
     std::string failure;                   // why no sensor opened
@@ -114,7 +120,14 @@ struct KinectPreviewWindow::Impl {
         { std::lock_guard guard(lock); source = sensor; }
         if (!source) return;
         const auto now = std::chrono::steady_clock::now();
-        if (source->next(frame)) last_frame = now;
+        if (borrowed) {
+            std::lock_guard guard(handed_lock);
+            if (handed_new) {
+                frame = handed;
+                handed_new = false;
+                last_frame = now;
+            }
+        } else if (source->next(frame)) last_frame = now;
         const bool new_colour = source->image(KinectImageKind::colour, colour);
         if (new_colour) last_frame = now;
         if (new_colour && colour.bytes_per_pixel == 4) {
@@ -294,8 +307,9 @@ struct KinectPreviewWindow::Impl {
         draw_image(dc, depth_area, depth_pixels, int(depth.width), int(depth.height));
         skeletons(dc, colour_area, true);
         skeletons(dc, depth_area, false);
-        text(dc, gap, height - 28, say(L"Close this window before starting the game: the Kinect opens for one program at a time.",
-                                       L"開始遊戲前會自動關閉此視窗：Kinect 一次只能給一個程式使用。"), dim);
+        text(dc, gap, height - 28, borrowed ? say(L"Close this window to go back to the game.", L"關閉此視窗即可回到遊戲。")
+                                            : say(L"Close this window before starting the game: the Kinect opens for one program at a time.",
+                                                  L"開始遊戲前會自動關閉此視窗：Kinect 一次只能給一個程式使用。"), dim);
         BitBlt(target, 0, 0, width, height, dc, 0, 0, SRCCOPY);
         SelectObject(dc, old_font);
         SelectObject(dc, old_bitmap);
@@ -364,8 +378,9 @@ struct KinectPreviewWindow::Impl {
         cls.lpszClassName = L"SfrKinectPreview";
         cls.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
         if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) { is_closed.store(true); return; }
-        HWND window = CreateWindowExW(0, cls.lpszClassName,
-                                      chinese ? L"Free Riders - Kinect 預覽" : L"Free Riders - Kinect preview",
+        HWND window = CreateWindowExW(borrowed ? WS_EX_TOPMOST : 0, cls.lpszClassName,
+                                      borrowed ? (chinese ? L"Free Riders - Kinect 調整" : L"Free Riders - Kinect adjustment")
+                                               : (chinese ? L"Free Riders - Kinect 預覽" : L"Free Riders - Kinect preview"),
                                       WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1360, 640, nullptr, nullptr,
                                       instance, this);
         if (!window) { is_closed.store(true); return; }
@@ -384,7 +399,10 @@ struct KinectPreviewWindow::Impl {
         // meanwhile; a second or so for a Kinect v1.
         std::jthread opener([this](std::stop_token) {
             std::string why;
-            std::shared_ptr<KinectSensor> opened = KinectSensor::open(&why);
+            // A borrowed sensor is the game's: shared without an owner, so
+            // closing the window leaves it open.
+            std::shared_ptr<KinectSensor> opened = borrowed ? std::shared_ptr<KinectSensor>(borrowed, [](KinectSensor*) {})
+                                                            : KinectSensor::open(&why);
             std::lock_guard guard(lock);
             sensor = std::move(opened);
             failure = sensor ? "" : why;
@@ -421,6 +439,26 @@ std::unique_ptr<KinectPreviewWindow> KinectPreviewWindow::open(bool chinese) {
     }
 }
 
+std::unique_ptr<KinectPreviewWindow> KinectPreviewWindow::open_over(KinectSensor& sensor) {
+    try {
+        auto impl = std::make_unique<Impl>();
+        impl->chinese = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE;
+        impl->borrowed = &sensor;
+        auto* raw = impl.get();
+        impl->worker = std::jthread([raw](std::stop_token stop) { raw->run(stop); });
+        return std::unique_ptr<KinectPreviewWindow>(new KinectPreviewWindow(std::move(impl)));
+    } catch (const std::exception& error) {
+        std::cerr << "NATIVE_KINECT_PREVIEW unavailable: " << error.what() << '\n';
+        return nullptr;
+    }
+}
+
+void KinectPreviewWindow::show_frame(const KinectFrame& frame) {
+    std::lock_guard guard(impl_->handed_lock);
+    impl_->handed = frame;
+    impl_->handed_new = true;
+}
+
 bool KinectPreviewWindow::closed() const { return impl_->is_closed.load(); }
 
 std::shared_ptr<KinectSensor> KinectPreviewWindow::sensor() const {
@@ -439,6 +477,8 @@ struct KinectPreviewWindow::Impl {};
 KinectPreviewWindow::KinectPreviewWindow(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 KinectPreviewWindow::~KinectPreviewWindow() = default;
 std::unique_ptr<KinectPreviewWindow> KinectPreviewWindow::open(bool) { return nullptr; }
+std::unique_ptr<KinectPreviewWindow> KinectPreviewWindow::open_over(KinectSensor&) { return nullptr; }
+void KinectPreviewWindow::show_frame(const KinectFrame&) {}
 bool KinectPreviewWindow::closed() const { return true; }
 std::shared_ptr<KinectSensor> KinectPreviewWindow::sensor() const { return nullptr; }
 std::string KinectPreviewWindow::failure() const { return {}; }

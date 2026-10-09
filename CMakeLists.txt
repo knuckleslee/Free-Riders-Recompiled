@@ -921,7 +921,8 @@ if(SFR_BUILD_DIAGNOSTIC)
     target_sources(sfr_cpu_diagnostic PRIVATE src/camera_player.cpp src/camera_debug.cpp src/camera_debug_window.cpp src/pose_skeleton.cpp src/pose_smoothing.cpp src/pose_stability.cpp
                    ${SFR_CAMERA_CAPTURE} ${SFR_POSE_SOURCES})
     # A real Kinect (SFR_CAMERA=kinect), through the Kinect for Windows runtime.
-    target_sources(sfr_cpu_diagnostic PRIVATE src/kinect_sensor.cpp ${SFR_KINECT_SENSOR} ${SFR_VOICE})
+    target_sources(sfr_cpu_diagnostic PRIVATE src/kinect_sensor.cpp ${SFR_KINECT_SENSOR} ${SFR_VOICE}
+        src/kinect_preview.cpp src/kinect_preview_window.cpp)
     if(SFR_POSE_AVAILABLE)
         target_link_libraries(sfr_cpu_diagnostic PRIVATE sfr_onnxruntime)
         sfr_copy_onnx_dlls(sfr_cpu_diagnostic)

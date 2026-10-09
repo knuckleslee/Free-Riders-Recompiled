@@ -39,6 +39,7 @@
 #include "video_globals.h"
 #include "native_winsock.h"
 #include "native_notifications.h"
+#include "kinect_tuner.h"
 #include "notification_placement.h"
 #include "native_graphics.h"
 #include "guest_graphics.h"
@@ -1702,6 +1703,32 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
                   << ctx.lr << std::dec << " result=0 backend=no-profiles\n";
         ctx.r3.u64 = 0;
         return;
+    }
+    if ((address == 0x82ACBE5C && std::string_view(name) == "__imp__XamShowNuiTroubleshooterUI") ||
+        std::string_view(name) == "__imp__XamShowNuiGuideUI") {
+        // The menu's Kinect adjustment: with a real Kinect, the preview
+        // window over the game's sensor stands in for the system's Kinect
+        // troubleshooter or Kinect Guide (kinect_tuner.h). The system UI is
+        // shown (XN_SYS_UI 1) until the window closes, then hidden.
+        const sfr::KinectTuner tuner = sfr::open_kinect_tuner();
+        if (tuner != sfr::KinectTuner::unavailable) {
+            std::cerr << "NUI_SYSTEM_UI " << std::string_view(name).substr(7) << " lr=0x" << std::hex << ctx.lr << std::dec
+                      << " result=0 backend=kinect-preview" << (tuner == sfr::KinectTuner::already_open ? " already-open" : "") << '\n';
+            if (tuner == sfr::KinectTuner::opened && native_notifications) {
+                constexpr uint32_t xn_sys_ui = 0x00000009;
+                native_notifications->publish(xn_sys_ui, 1);
+                static std::jthread watch;
+                if (watch.joinable()) watch.join();  // the previous window's: it has closed
+                watch = std::jthread([](std::stop_token stop) {
+                    while (!stop.stop_requested() && sfr::kinect_tuner_open())
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    if (native_notifications) native_notifications->publish_when_drained(xn_sys_ui, 0);
+                    std::cerr << "NUI_KINECT_TUNER closed\n";
+                });
+            }
+            ctx.r3.u64 = 0;
+            return;
+        }
     }
     if (address == 0x82ACBE5C && std::string_view(name) == "__imp__XamShowNuiTroubleshooterUI") {
         // (user index, 0, 0): the Kinect troubleshooter. There is no system

@@ -18,6 +18,13 @@ namespace sfr {
 class KinectPreviewWindow {
 public:
     static std::unique_ptr<KinectPreviewWindow> open(bool chinese);
+    // The same window over the game's own sensor, for the menu's Kinect
+    // adjustment (kinect_tuner.h): it neither opens nor closes the sensor and
+    // never takes its skeleton frames, which the game reads; the game hands
+    // it each one with show_frame. It stays above the game's window, which
+    // may fill the screen, and speaks the system's language.
+    static std::unique_ptr<KinectPreviewWindow> open_over(KinectSensor& sensor);
+    void show_frame(const KinectFrame& frame);
     ~KinectPreviewWindow();
     bool closed() const;
     // The open sensor, or null while it is opening or when there is none.

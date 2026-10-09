@@ -241,3 +241,11 @@ mingw 編譯連結過。Kinect for Xbox 360（v1）已在實機上讀到骨架�
 「人體追蹤」失敗並提示站位。四項都通過後才改回顯示機型、人數和角度。
 右上角的「往上」「往下」（或 ↑↓）轉動感應器，邊看邊調到全身入鏡。SDK 一個程式只能開一次 Kinect，所以
 按「開始遊戲」會先關閉預覽，把 Kinect 讓給遊戲。
+
+遊戲中也開得到同一個視窗（[`kinect_tuner.h`](../src/kinect_tuner.h)）：選單裡調整 Kinect 的選項會向系統要
+Kinect 疑難排解（`XamShowNuiTroubleshooterUI`）或 Kinect Guide（`XamShowNuiGuideUI`，結算畫面的 Guide 按鈕），
+原本這裡沒有系統畫面、打開就關閉；現在用實體 Kinect 時改成打開「Kinect 調整」視窗。它借用遊戲已開的感應器
+（不另外開、不關閉），骨架由遊戲讀到後轉交給它（不會搶走遊戲的骨架），彩色與深度影像照常顯示，角度一樣用按鈕或
+↑↓ 調整；視窗保持在最上層，語言跟系統。開著時通知遊戲系統畫面開啟（XN_SYS_UI 1），關閉視窗才通知關閉（0）。
+用 webcam 或手把時照舊打開就關閉。log：`NUI_SYSTEM_UI ... backend=kinect-preview`、`NUI_KINECT_TUNER opened=1`、
+`NUI_KINECT_TUNER closed`。尚未實機測試：選單選項實際呼叫的是哪一個系統畫面、遊戲在系統畫面開著時是否停住，都要實測確認。
