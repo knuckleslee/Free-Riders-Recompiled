@@ -1671,7 +1671,10 @@ void NativePresentation::present(uint32_t area_width, uint32_t area_height) {
     const uint32_t out_width = impl_->swap_chain->getWidth(), out_height = impl_->swap_chain->getHeight();
     const bool can_copy = impl_->graphics->backend() != GraphicsBackend::vulkan ||
         (static_cast<plume::VulkanSwapChain*>(impl_->swap_chain.get())->createInfo.imageUsage & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-    const bool stretch = !can_copy || part || out_width != impl_->render_width || out_height != impl_->render_height;
+    // The Guide gesture's gauge is drawn by the blit too, so it takes the blit.
+    const float guide = guide_gauge();
+    const bool stretch = !can_copy || part || out_width != impl_->render_width || out_height != impl_->render_height ||
+                         guide > 0.0f;
     // The copy to the swap-chain texture follows the frame's draws in their
     // own list; pipelined, the frame is submitted without waiting for it.
     const bool pipelined = Impl::pipelined();
@@ -1716,6 +1719,11 @@ void NativePresentation::present(uint32_t area_width, uint32_t area_height) {
             constants[3] = overlay.knob[1];
             for (size_t i = 0; i < TouchOverlay::circles; ++i)
                 for (size_t j = 0; j < 4; ++j) constants[4 + i * 4 + j] = overlay.circle[i][j];
+        }
+        if (guide > 0.0f) {
+            // The last circle (START's) becomes the gauge: state 3 plus how far.
+            const float gauge[4] = {0.075f, 0.86f, 0.05f, 3.0f + (std::min)(guide, 1.0f)};
+            for (size_t j = 0; j < 4; ++j) constants[4 + (TouchOverlay::circles - 1) * 4 + j] = gauge[j];
         }
         impl_->touch_view = {viewport.x, viewport.y, viewport.width, viewport.height, float(out_width), float(out_height)};
         impl_->command_list->setGraphicsPushConstants(0, constants.data());

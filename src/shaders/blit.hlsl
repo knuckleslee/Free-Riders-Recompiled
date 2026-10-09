@@ -3,7 +3,10 @@
 // build time to DXIL and SPIR-V (CMakeLists.txt, sfr_embed_shader).
 // The pixel shader also draws the touch controls (touch_controls.h) over the
 // image: per circle (x, y, radius, state) in image coordinates, state 0 for
-// none; the stick's knob is at g_AreaKnob.zw.
+// none; the stick's knob is at g_AreaKnob.zw. A state of 3 to 4 is the Kinect
+// Guide gesture's gauge instead (state - 3 is how far the hold has got): a
+// ring that fills clockwise from the top, on a dark disc.
+
 struct BlitConstants {
     float4 areaKnob;   // sampled area (xy), stick knob (zw)
     float4 circles[7];
@@ -37,6 +40,24 @@ static const float3 g_Colors[7] = {
     float3(1.0, 1.0, 1.0),     // START
 };
 
+// The Guide gesture's gauge at c (x, y, radius, 3 + progress).
+float3 gauge(float3 color, float2 image, float4 c, float2 pixel) {
+    const float2 d = (image - c.xy) * float2(16.0 / 9.0, 1.0);
+    const float r = length(d);
+    const float edge = pixel.y;
+    const float disc_alpha = 1.0 - smoothstep(c.z - edge, c.z + edge, r);
+    const float ring = smoothstep(c.z * 0.68 - edge, c.z * 0.68 + edge, r) *
+                       (1.0 - smoothstep(c.z * 0.88 - edge, c.z * 0.88 + edge, r));
+    float turn = atan2(d.x, -d.y) / 6.2831853;  // 0 at the top, clockwise
+    if (turn < 0.0) turn += 1.0;
+    const float filled = step(turn, c.w - 3.0);
+    const float hub = 1.0 - smoothstep(c.z * 0.22 - edge, c.z * 0.22 + edge, r);
+    color = lerp(color, float3(0.05, 0.07, 0.1), disc_alpha * 0.55);
+    color = lerp(color, float3(0.55, 0.6, 0.65), ring * (1.0 - filled) * 0.6);
+    color = lerp(color, float3(0.45, 0.9, 1.0), ring * filled * 0.95);
+    return lerp(color, float3(1.0, 1.0, 1.0), hub * 0.85);
+}
+
 // A soft disc with a brighter rim; alpha 0 outside.
 float disc(float2 image, float2 centre, float radius, float2 pixel) {
     const float d = length((image - centre) * float2(16.0 / 9.0, 1.0)) - radius;
@@ -49,6 +70,10 @@ float4 pixelMain(Vertex vertex) : SV_Target {
     [unroll] for (int i = 0; i < 7; ++i) {
         const float4 c = g_Circles[i];
         if (c.w <= 0.0) continue;
+        if (c.w >= 3.0) {
+            color.rgb = gauge(color.rgb, vertex.image, c, pixel);
+            continue;
+        }
         const float inside = disc(vertex.image, c.xy, c.z, pixel);
         const float core = disc(vertex.image, c.xy, c.z * 0.82, pixel);
         const float alpha = (c.w > 1.5 ? 0.55 : 0.22) * core + (inside - core) * (c.w > 1.5 ? 0.9 : 0.5);

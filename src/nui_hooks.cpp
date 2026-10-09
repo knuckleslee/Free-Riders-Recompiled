@@ -63,7 +63,14 @@ sfr::KinectPlayerSlots kinect_players;
 sfr::GuideGesture guide_gesture=sfr::GuideGesture::from_environment();
 std::atomic<bool> guide_pause{false};
 void watch_guide_gesture(const sfr::SkeletonJoints& joints,bool racing) {
-    if(!guide_gesture.update(joints,std::chrono::steady_clock::now())) return;
+    const auto now=std::chrono::steady_clock::now();
+    const bool fired=guide_gesture.update(joints,now);
+    // The gauge in the lower left, as the console drew it, once the arm has
+    // been up for a moment (a pose passed through in play does not flash
+    // it), and only where the gesture does something.
+    const float progress=guide_gesture.progress(now);
+    sfr::publish_guide_gauge(racing && progress>=0.15f ? progress : 0.0f);
+    if(!fired) return;
     // A race (or its replay) pauses; elsewhere the console would have opened
     // its own Guide, which there is none of here.
     if(racing) guide_pause.store(true,std::memory_order_relaxed);
@@ -543,7 +550,10 @@ SFR_INPUT_HOOK(sub_827707B0) {
     const bool was_camera=sfr::camera_motion_active();
     camera_input_active.store(use_camera,std::memory_order_relaxed);
     if(use_camera) watch_guide_gesture(camera_joints,racing);
-    else guide_gesture.forget();
+    else {
+        guide_gesture.forget();
+        sfr::publish_guide_gauge(0.0f);
+    }
     if(use_camera!=was_camera)
         std::cerr<<"NUI_INPUT_SOURCE player=0 source="<<(use_camera?"camera":"controller")
                  <<" pose_age_ms="<<camera_status.pose_age_ms<<'\n';
