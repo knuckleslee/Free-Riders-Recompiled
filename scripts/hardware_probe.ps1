@@ -52,6 +52,8 @@ function Get-HardwareProbe([string]$HostDirectory = '', [switch]$Basics) {
         $threads = ($processors | Measure-Object NumberOfLogicalProcessors -Sum).Sum
         $text = "$cores cores, $threads threads, max $($processors[0].MaxClockSpeed) MHz"
         if ($processors.Count -gt 1) { $text += ", $($processors.Count) sockets" }
+        # the frame depends on the shared L3 (the hog curve, docs/benchmark.md): say how big it is
+        if ($processors[0].L3CacheSize) { $text += ", L3 $($processors[0].L3CacheSize) KB" }
         $name = "$($processors[0].Name)"
         if ($name -match '1[2-4]th Gen Intel' -and $threads -gt $cores -and $threads -lt 2 * $cores) {
             $text += " (hybrid: about $($threads - $cores) P-cores and $(2 * $cores - $threads) E-cores, read from the counts)"

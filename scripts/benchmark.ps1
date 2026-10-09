@@ -177,6 +177,10 @@ $settings = @{
 }
 # "a,b" arrives as one string through powershell -File.
 $Configs = @($Configs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+# any other hog size too: benchmark_all.ps1 -Set cache picks them from this PC's L3
+foreach ($name in $Configs) {
+    if ($name -match '^hog-(\d+)$' -and -not $settings.ContainsKey($name)) { $settings[$name] = @{ SFR_CACHE_HOG_KB = $Matches[1] } }
+}
 if (-not $Configs.Count -or @($Configs | Select-Object -Unique).Count -ne $Configs.Count) { throw 'Provide distinct configurations.' }
 if (-not $AllowDiagnosticRendering -and @($Configs | Where-Object { $_ -in 'skip-draws','render-every-2','profile-skip-draws' }).Count) {
     throw 'Omitted drawing is a diagnostic ceiling, not gameplay performance; use -AllowDiagnosticRendering explicitly.'
