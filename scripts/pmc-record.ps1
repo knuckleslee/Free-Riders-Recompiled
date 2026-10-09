@@ -15,7 +15,10 @@ param(
     # Starts at once and asks nothing (play.ps1 -Record starts it when a race is under way)
     [switch]$NoPrompt,
     # Names the summary pmc-<Label>.md (benchmark.ps1 -RecordPmc) instead of by time and process
-    [string]$Label = ''
+    [string]$Label = '',
+    # The game's own trace (NATIVE_PRESENT lines with seconds=): when PresentMon saw no frames (a hidden
+    # benchmark window), the frames a second come from it over the recording's seconds
+    [string]$FrameLog = ''
 )
 $ErrorActionPreference = 'Continue'  # native tools' stderr must not stop the script
 $invariant = [Globalization.CultureInfo]::InvariantCulture
@@ -267,6 +270,8 @@ if (-not $NoPrompt) {
     for ($i = $Delay; $i -gt 0; --$i) { Write-Host "  recording in $i s"; Start-Sleep -Seconds 1 }
 }
 
+$gameStart = (Get-Process -Name $name | Sort-Object StartTime | Select-Object -First 1).StartTime
+$recordStart = Get-Date
 & $xperf -on PROC_THREAD+LOADER+CSWITCH -pmc UnhaltedCoreCyclesFixed,InstructionsRetiredFixed CSWITCH -BufferSize 1024 -MinBuffers 256 -MaxBuffers 2048
 if ($LASTEXITCODE -ne 0) { throw "xperf -on failed ($LASTEXITCODE). Restart the PC and try again." }
 $presentMonProcess = $null
@@ -309,6 +314,26 @@ if ($rows.Count -gt 1) {
     $frameLines += '', '| ms a frame (mean / median / P95) | |', '| --- | ---: |'
     foreach ($column in 'MsBetweenPresents', 'MsCPUBusy', 'MsCPUWait', 'MsGPUBusy', 'MsGPUWait', 'MsGPUTime', 'MsInPresentAPI') {
         $frameLines += "| $column | $(& $describe $column) |"
+    }
+} elseif ($FrameLog -and (Test-Path -LiteralPath $FrameLog)) {
+    # The game's seconds= count from its start: the recording's stretch of them.
+    $from = ($recordStart - $gameStart).TotalSeconds
+    $to = $from + $Seconds
+    $count = 0; $first = $null; $last = $null
+    $reader = [System.IO.StreamReader]::new([System.IO.FileStream]::new($FrameLog, 'Open', 'Read', 'ReadWrite'))
+    try {
+        while ($null -ne ($line = $reader.ReadLine())) {
+            if (-not $line.StartsWith('NATIVE_PRESENT ') -or $line -notmatch ' seconds=([0-9.]+)') { continue }
+            $at = [double]::Parse($Matches[1], $invariant)
+            if ($at -lt $from -or $at -gt $to) { continue }
+            if ($null -eq $first) { $first = $at }
+            $last = $at; ++$count
+        }
+    } finally { $reader.Dispose() }
+    if ($count -gt 1 -and $last -gt $first) {
+        $fps = ($count - 1) / ($last - $first)
+        $frameLines += '', '## Frames (the game''s own trace)', '',
+            "- $count frames in $(($last - $first).ToString('F1', $invariant)) s: $($fps.ToString('F1', $invariant)) fps (PresentMon saw none)"
     }
 } elseif (-not $NoPrompt) {
     $typed = Read-Host 'PresentMon recorded no frames. If the game showed its fps, type the average (or just press Enter)'

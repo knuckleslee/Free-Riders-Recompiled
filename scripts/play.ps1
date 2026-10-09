@@ -152,7 +152,7 @@ try {
         if ($reader) { $reader.Dispose() }
         if (-not $game.HasExited) {
             Write-Output 'A race is under way: recording.'
-            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'pmc-record.ps1') -Process sfr_cpu_diagnostic.exe -Seconds $RecordSeconds -OutDir (Join-Path $root 'out/pmc') -NoPrompt
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'pmc-record.ps1') -Process sfr_cpu_diagnostic.exe -Seconds $RecordSeconds -OutDir (Join-Path $root 'out/pmc') -NoPrompt -FrameLog $logPath
         }
         $game.WaitForExit()
         if ($game.ExitCode -ne 0) { Write-Output "Stopped (exit $($game.ExitCode)); the last lines of $Log say why." }

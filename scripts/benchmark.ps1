@@ -466,7 +466,7 @@ function Get-RaceFps([string]$logPath) {
             if ($racing -ge 360) {
                 $recorder = Start-Process -FilePath powershell -PassThru -WindowStyle Hidden -ArgumentList @(
                     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$(Join-Path $PSScriptRoot 'pmc-record.ps1')`"",
-                    '-Process', 'sfr_cpu_diagnostic.exe', '-Seconds', '45', '-OutDir', "`"$Out`"", '-Label', "$name-$repeat", '-NoPrompt')
+                    '-Process', 'sfr_cpu_diagnostic.exe', '-Seconds', '45', '-OutDir', "`"$Out`"", '-Label', "$name-$repeat", '-NoPrompt', '-FrameLog', "`"$runLog`"")
                 Write-Output '  recording the CPU counters (45 s)'
             }
         }
