@@ -54,14 +54,16 @@ float rounded_box(float2 p, float2 c, float2 h, float k) {
 }
 
 // A filled half-length figure in the pose, seen as in a mirror (the arm the
-// player raises reaches to the screen's left, the other hangs at the right,
-// a gap apart from the body), in units of the gauge's radius, +y down; cut
-// off at the ring's inner edge like a bust.
+// player raises reaches to the screen's left), in units of the gauge's
+// radius, +y down; cut off at the ring's inner edge like a bust. The body is
+// as wide as its shoulders, and a cut from the right armpit down makes that
+// side the other arm, hanging and still joined at the shoulder.
 float figure(float2 p, float edge) {
-    float d = length(p - float2(0.0, -0.31)) - 0.14;                            // head
-    d = min(d, rounded_box(p, float2(0.0, 0.27), float2(0.14, 0.3), 0.11));      // body
-    d = min(d, segment(p, float2(-0.08, 0.03), float2(-0.38, 0.33)) - 0.07);     // arm out at 45
-    d = min(d, segment(p, float2(0.215, 0.04), float2(0.235, 0.4)) - 0.06);      // arm hanging down
+    float d = length(p - float2(-0.02, -0.31)) - 0.14;                          // head
+    float body = rounded_box(p, float2(0.02, 0.28), float2(0.2, 0.3), 0.13);
+    body = max(body, -(segment(p, float2(0.115, 0.07), float2(0.125, 0.7)) - 0.025));  // armpit cut
+    d = min(d, body);
+    d = min(d, segment(p, float2(-0.1, 0.04), float2(-0.4, 0.34)) - 0.07);       // arm out at 45
     const float inside = 1.0 - smoothstep(0.6 - edge, 0.6 + edge, length(p));
     return (1.0 - smoothstep(-edge, edge, d)) * inside;
 }
