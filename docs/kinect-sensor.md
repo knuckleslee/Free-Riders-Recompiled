@@ -135,7 +135,8 @@ COM 介面依 SDK 2.0 的 `Kinect.h` 宣告到用得到的最後一個方法為�
   免得比賽中手臂剛好經過這個姿勢時閃一下；只在比賽中顯示）。進度環的樣式是這裡自己畫的，
   不是主機的原圖，也沒有主機的提示音。它由畫面最後輸出的 blit 著色器畫
   （[`blit.hlsl`](../src/shaders/blit.hlsl)），借用觸控按鈕 START 的那一格，顯示時那一格的觸控按鈕暫時不畫。
-  在選單中不做事（主機上那會打開系統的 Kinect Guide，這裡沒有）。`SFR_PAUSE_GESTURE=0` 關閉；
+  只在比賽（或重播）中、而且沒有選單開著時作用：暫停選單本身（比賽旗標仍開著，以轉盤選單最近 0.5 秒有沒有運作判斷）、
+  選單頁面、對話框、劇情畫面、結算畫面都不作用，進度環也不顯示，免得在暫停選單裡再做一次手勢被當成 START 而直接繼續比賽。`SFR_PAUSE_GESTURE=0` 關閉；
   `SFR_PAUSE_GESTURE_SECONDS` 範圍 0.5 到 10。log：`NUI_PAUSE_GESTURE racing=1 pause`。尚未實機測試。
 - **語音指令**：launcher 的「語音指令」（`SFR_VOICE=1`，Windows）用 Windows 語音辨識（SAPI）
   聽預設麥克風。Kinect 的麥克風陣列在 Windows 上就是一個錄音裝置，設成預設就會用它。
