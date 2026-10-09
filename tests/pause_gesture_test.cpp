@@ -49,43 +49,54 @@ void the_pose() {
 }
 
 void it_fires_once_after_the_hold() {
-    sfr::PauseGesture guide(true, 2.0);
+    sfr::PauseGesture pause(true, 2.0);
     int fired = 0;
     for (double t = 0; t <= 3.0; t += 1.0 / 30.0)
-        if (guide.update(body(45), at(t))) {
+        if (pause.update(body(45), at(t))) {
             ++fired;
-            require(t >= 2.0 - 1e-6, "not before two seconds");
+            require(t >= 2.0 - 1e-6 && t <= 2.1, "about two seconds of pose fill it");
         }
     require(fired == 1, "held on, it fires once");
+    require(pause.progress() == 0.0f, "after firing the gauge is empty");
     // The arm comes down, then goes up again: a second time.
-    for (double t = 3.0; t <= 3.5; t += 1.0 / 30.0) guide.update(body(85), at(t));
+    for (double t = 3.0; t <= 3.5; t += 1.0 / 30.0) pause.update(body(85), at(t));
     for (double t = 3.5; t <= 6.0; t += 1.0 / 30.0)
-        if (guide.update(body(45), at(t))) ++fired;
+        if (pause.update(body(45), at(t))) ++fired;
     require(fired == 2, "after leaving the pose it may fire again");
 }
 
-void a_short_glitch_does_not_restart_the_wait() {
-    sfr::PauseGesture guide(true, 2.0);
+void out_of_the_pose_the_gauge_drains() {
+    sfr::PauseGesture pause(true, 2.0);
+    double t = 0;
+    for (; t < 1.0; t += 1.0 / 30.0) pause.update(body(45), at(t));
+    const float half = pause.progress();
+    require(half > 0.45f && half < 0.55f, "a second of pose is half the gauge");
+    // Half a second out of the pose takes back a quarter, not everything.
+    for (const double end = t + 0.5; t < end; t += 1.0 / 30.0) pause.update(body(0), at(t));
+    require(std::fabs(pause.progress() - (half - 0.25f)) < 0.03f, "out of the pose it drains at the same rate");
+    // Back in the pose it fills from there: 1.5 more seconds, not 2.
     bool fired = false;
-    for (double t = 0; t <= 2.1 && !fired; t += 1.0 / 30.0) {
-        const bool glitch = t > 1.0 && t < 1.1;  // three pictures lost the arm
-        fired = guide.update(body(glitch ? 0 : 45), at(t));
-    }
-    require(fired, "a tenth of a second without the pose is forgiven");
-
+    const double back = t;
+    for (; t < back + 2.0 && !fired; t += 1.0 / 30.0) fired = pause.update(body(45), at(t));
+    require(fired && t - back < 1.6, "back in the pose it goes on from what was left");
+    // Long enough out of the pose, it empties.
     sfr::PauseGesture again(true, 2.0);
-    fired = false;
-    for (double t = 0; t <= 2.1 && !fired; t += 1.0 / 30.0) {
-        const bool away = t > 1.0 && t < 1.5;
-        fired = again.update(body(away ? 0 : 45), at(t));
-    }
-    require(!fired, "half a second out of the pose starts the wait again");
+    for (t = 0; t < 1.0; t += 1.0 / 30.0) again.update(body(45), at(t));
+    for (; t < 3.0; t += 1.0 / 30.0) again.update(body(0), at(t));
+    require(again.progress() == 0.0f, "it empties and stops at nothing");
+}
+
+void a_stall_does_not_fill_it_at_once() {
+    sfr::PauseGesture pause(true, 2.0);
+    pause.update(body(45), at(0));
+    require(!pause.update(body(45), at(5.0)), "five seconds between two updates is not five seconds of pose");
+    require(pause.progress() <= 0.051f, "a stall counts as a tenth of a second at most");
 }
 
 void it_can_be_turned_off() {
-    sfr::PauseGesture guide(false);
+    sfr::PauseGesture pause(false);
     bool fired = false;
-    for (double t = 0; t <= 3.0; t += 1.0 / 30.0) fired = fired || guide.update(body(45), at(t));
+    for (double t = 0; t <= 3.0; t += 1.0 / 30.0) fired = fired || pause.update(body(45), at(t));
     require(!fired, "SFR_PAUSE_GESTURE=0 never fires");
 }
 }
@@ -94,7 +105,8 @@ int main() {
     try {
         the_pose();
         it_fires_once_after_the_hold();
-        a_short_glitch_does_not_restart_the_wait();
+        out_of_the_pose_the_gauge_drains();
+        a_stall_does_not_fill_it_at_once();
         it_can_be_turned_off();
     } catch (const std::exception& error) {
         std::cerr << "pause_gesture_test: " << error.what() << '\n';

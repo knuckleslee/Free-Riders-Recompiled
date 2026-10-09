@@ -44,32 +44,33 @@ bool PauseGesture::in_pose(const SkeletonJoints& joints) {
 }
 
 void PauseGesture::forget() {
-    holding_ = false;
-    fired_ = false;
+    charge_ = 0;
+    armed_ = true;
+    started_ = false;
 }
 
 bool PauseGesture::update(const SkeletonJoints& joints, Clock::time_point now) {
     if (!enabled_) return false;
-    if (in_pose(joints)) {
-        if (!holding_) {
-            holding_ = true;
-            since_ = now;
-        }
-        last_seen_ = now;
-    } else if (holding_ && now - last_seen_ > std::chrono::duration<double>(grace_seconds)) {
-        holding_ = false;
-        fired_ = false;  // the arm left the pose: it may fire again
+    double step = 0;
+    if (started_) step = (std::min)(std::chrono::duration<double>(now - last_).count(), max_step_seconds);
+    if (!(step >= 0)) step = 0;
+    started_ = true;
+    last_ = now;
+    const bool posed = in_pose(joints);
+    if (!armed_) {
+        // Fired: nothing charges until the arm has come out of the pose.
+        if (!posed) armed_ = true;
+        return false;
     }
-    if (!holding_ || fired_) return false;
-    if (now - since_ < std::chrono::duration<double>(hold_seconds_)) return false;
-    fired_ = true;
+    charge_ += (posed ? step : -step) / hold_seconds_;
+    if (charge_ <= 0) {
+        charge_ = 0;
+        return false;
+    }
+    if (charge_ < 1) return false;
+    charge_ = 0;
+    armed_ = false;
     return true;
-}
-
-float PauseGesture::progress(Clock::time_point now) const {
-    if (!holding_ || fired_) return 0.0f;
-    const double held = std::chrono::duration<double>(now - since_).count();
-    return float(held >= hold_seconds_ ? 1.0 : held / hold_seconds_);
 }
 
 }

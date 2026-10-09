@@ -68,7 +68,7 @@ void watch_pause_gesture(const sfr::SkeletonJoints& joints,bool racing) {
     // The gauge in the lower left, as the console drew it, once the arm has
     // been up for a moment (a pose passed through in play does not flash
     // it), and only where the gesture does something.
-    const float progress=pause_gesture.progress(now);
+    const float progress=pause_gesture.progress();
     sfr::publish_pause_gauge(racing && progress>=0.15f ? progress : 0.0f);
     if(!fired) return;
     // A race (or its replay) pauses; elsewhere the console would have opened

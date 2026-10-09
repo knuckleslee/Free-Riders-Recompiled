@@ -23,9 +23,11 @@ namespace sfr {
 //     than half the arm's length in front of or behind the shoulder;
 //   - the right hand hangs by the side: below the right shoulder, within 30
 //     degrees of straight down.
-// Held for hold_seconds it fires once, and fires again only after the arm
-// has left the pose. A glitch shorter than grace_seconds (a picture that
-// lost the arm) does not start the wait again.
+// The gauge charges while the pose holds and drains while it does not, at
+// the same rate: hold_seconds of pose fill it from empty, and a moment out
+// of the pose (a picture that lost the arm, a wobble) only takes back what
+// it lasted instead of starting the wait again. Full, it fires once; it
+// fires again only after the arm has left the pose.
 class PauseGesture {
 public:
     using Clock = std::chrono::steady_clock;
@@ -35,21 +37,25 @@ public:
     explicit PauseGesture(bool enabled = true, double hold_seconds = 2.0)
         : enabled_(enabled), hold_seconds_(hold_seconds) {}
 
-    // True once, at the moment the pose has been held long enough.
+    // True once, at the moment the gauge fills.
     bool update(const SkeletonJoints& joints, Clock::time_point now);
     void forget();
-    // 0 to 1 while the pose is held, for the log.
-    float progress(Clock::time_point now) const;
+    // How full the gauge is, 0 to 1 (0 once it has fired, until the arm has
+    // come down).
+    float progress() const { return float(charge_); }
 
     static bool in_pose(const SkeletonJoints& joints);
 
-    static constexpr double grace_seconds = 0.2;
+    // A gap between updates longer than this (a stall, a load) counts as
+    // this long, so it cannot fill or empty the gauge at once.
+    static constexpr double max_step_seconds = 0.1;
 
 private:
     bool enabled_;
     double hold_seconds_;
-    bool holding_ = false, fired_ = false;
-    Clock::time_point since_{}, last_seen_{};
+    double charge_ = 0;
+    bool armed_ = true, started_ = false;
+    Clock::time_point last_{};
 };
 
 }
