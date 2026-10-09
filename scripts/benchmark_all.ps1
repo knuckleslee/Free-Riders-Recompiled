@@ -15,11 +15,8 @@
 # -Set cache (run_benchmark.bat cache) is the cache-budget set instead, all Time Attack
 # stepped 1/60 s a frame:
 #   1. index: baseline, no-index-cache, constant-reuse and no-draw-timers, -Repeats rounds.
-#   2. hog: baseline, hog-64 and three sizes from this PC's L3 (a third of it, two thirds,
-#      twice it: 2048, 4096 and 12288 with a 6 MB L3), how much a frame depends on it, -HogRepeats rounds.
-#   3. spin: baseline, render-spin-0 and render-spin-100, -HogRepeats rounds: whether the render
-#      thread's spinning still pays where it shares a core with the main thread (two threads a core).
-#   4. pmc: baseline and skip-draws once each with the CPU's counters recorded
+#   2. hog: baseline and hog-64 to hog-12288 (how much a frame depends on the L3), -HogRepeats rounds.
+#   3. pmc: baseline and skip-draws once each with the CPU's counters recorded
 #      (benchmark.ps1 -RecordPmc), from an administrator PowerShell only.
 param(
     [ValidateSet('full', 'cache')][string]$Set = 'full',
@@ -49,14 +46,9 @@ $phases = @(
 )
 if ($Set -eq 'cache') {
     $solo = @('-Scenario', 'solo', '-FixedStep')
-    $l3 = [int](@(Get-CimInstance Win32_Processor)[0].L3CacheSize)
-    if ($l3 -lt 768) { $l3 = 6144 }
-    $hogs = (@([int]($l3 / 3), [int]($l3 * 2 / 3), $l3 * 2) | ForEach-Object { "hog-$_" }) -join ','
-    Write-Output "L3 $l3 KB: $hogs"
     $phases = @(
         @{ name = 'index'; arguments = $solo + @('-Configs', 'baseline,no-index-cache,constant-reuse,no-draw-timers', '-Repeats', "$Repeats") },
-        @{ name = 'hog'; arguments = $solo + @('-Configs', "baseline,hog-64,$hogs", '-Repeats', "$HogRepeats") },
-        @{ name = 'spin'; arguments = $solo + @('-Configs', 'baseline,render-spin-0,render-spin-100', '-Repeats', "$HogRepeats") }
+        @{ name = 'hog'; arguments = $solo + @('-Configs', 'baseline,hog-64,hog-2048,hog-4096,hog-12288', '-Repeats', "$HogRepeats") }
     )
     $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
         [Security.Principal.WindowsBuiltInRole]::Administrator)

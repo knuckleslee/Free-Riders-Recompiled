@@ -5,7 +5,7 @@ rem   run_benchmark.bat pipelines    a new player first race, with and without t
 rem   run_benchmark.bat exe          two builds, sfr_cpu_diagnostic_a.exe against _b.exe, in the same rounds
 rem   run_benchmark.bat report       what limits this PC: as it is, without drawing, at half resolution, 4 rounds; send the -shareable zip
 rem   run_benchmark.bat cache        the measurements Issue #65 asked for, unattended (about 2 hours; as administrator for the CPU counters):
-rem                                  index cache, constant reuse and the draw timers' cost (6 rounds), the L3 hog curve sized to this PC's L3 and the render thread's spin (3 rounds each), counters with and without drawing
+rem                                  index cache, constant reuse and the draw timers' cost (6 rounds), the L3 hog curve (3 rounds), counters with and without drawing
 rem   run_benchmark.bat full         the whole report, unattended (about 45 minutes): what each part costs and the limit (Time Attack), then a race's frame rate; one zip to send
 rem   run_benchmark.bat parts        what each part costs a frame: no drawing, half resolution, no sound output, main thread unpinned, 4 rounds (add solo)
 rem   run_benchmark.bat profile      where the main thread's time goes, with and without drawing, 2 rounds (add solo); profile.md stays on this PC

@@ -46,10 +46,7 @@ the one file to attach. About 45 minutes on an i5-3470.
 `run_benchmark.bat cache` (`benchmark_all.ps1 -Set cache`) runs the cache-budget
 measurements the same way, all Time Attack stepped 1/60 s a frame: baseline,
 no-index-cache, constant-reuse and no-draw-timers (6 rounds); baseline and
-hog-64 and three sizes from this PC's L3 (a third, two thirds and twice it:
-hog-2048, hog-4096 and hog-12288 with 6 MB), how much a frame depends on the
-shared L3 (3 rounds); baseline, render-spin-0 and render-spin-100, whether the
-render thread's spinning pays on this PC (3 rounds); and,
+hog-64 to hog-12288, how much a frame depends on the shared L3 (3 rounds); and,
 from an administrator PowerShell, baseline and skip-draws once each with the
 CPU's counters recorded (`benchmark.ps1 -RecordPmc`, `scripts/pmc-record.ps1`:
 cycles and instructions of every thread of the game, and PresentMon's frames when
@@ -119,8 +116,8 @@ them at 0, and the summary says so.
 one environment variable of the baseline. Among them: `no-suspend-notify`,
 `no-prewarm` (with `-ColdPipelines`), `skip-draws` (the game without its
 drawing, the ceiling), `serial`, `vulkan`, `constant-reuse`, `no-index-cache`,
-`hog-64` to `hog-12288`, or any `hog-<KB>` (a thread keeps that many KB in the
-caches: compare the larger ones with `hog-64`, which takes only a core), `no-draw-timers`,
+`hog-64` to `hog-12288` (a thread keeps that many KB in the caches: compare
+the larger ones with `hog-64`, which takes only a core), `no-draw-timers`,
 `priority`, `no-host-timing`, `render-spin-0`, `render-spin-100` and
 `no-render-thread` (how long the render thread spins before it sleeps, or no
 render thread), and `profile` (samples the main thread each millisecond

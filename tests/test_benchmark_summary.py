@@ -204,7 +204,7 @@ class CacheBudgetTest(unittest.TestCase):
 
     def test_cache_report_takes_its_parts_and_the_recorded_counters(self):
         with tempfile.TemporaryDirectory() as directory:
-            for name in ('index', 'hog', 'spin', 'pmc'):
+            for name in ('index', 'hog', 'pmc'):
                 (Path(directory) / name).mkdir()
                 write_race(Path(directory) / name, 'baseline-1.log', 20, race_frames=200)
                 table, _ = bench.summarise(Path(directory) / name, 0)
@@ -215,7 +215,6 @@ class CacheBudgetTest(unittest.TestCase):
             self.assertIn('### PMC summary: x.exe', report)
             self.assertIn('#### Process 1', report)
             self.assertLess(report.index('## Index cache'), report.index('## How much a frame depends'))
-            self.assertLess(report.index('## How much a frame depends'), report.index("## The render thread's spinning"))
 
 
 class StallTest(unittest.TestCase):

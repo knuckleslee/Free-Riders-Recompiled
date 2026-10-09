@@ -845,7 +845,6 @@ REPORT_PARTS = (('race', 'The frame rate a player gets (Free Race with rivals, e
 # run_benchmark.bat cache (benchmark_all.ps1 -Set cache): the cache-budget measurements.
 CACHE_PARTS = (('index', 'Index cache, and what the draw timers cost (Time Attack, fixed step)'),
                ('hog', 'How much a frame depends on the shared L3 (Time Attack, fixed step)'),
-               ('spin', "The render thread's spinning (Time Attack, fixed step)"),
                ('pmc', 'CPU counters of one baseline run (Time Attack, fixed step)'))
 
 
