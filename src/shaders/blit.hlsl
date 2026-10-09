@@ -47,17 +47,21 @@ float segment(float2 p, float2 a, float2 b) {
     return length(pa - ba * saturate(dot(pa, ba) / dot(ba, ba)));
 }
 
-// A figure in the pose, seen as in a mirror (the player's left arm out to the
-// screen's left, the right one down), in units of the gauge's radius, +y down.
+// Distance from p to a box of half-size h centred on c, its corners rounded by k.
+float rounded_box(float2 p, float2 c, float2 h, float k) {
+    const float2 q = abs(p - c) - h + k;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - k;
+}
+
+// A filled half-length figure in the pose, seen as in a mirror (the arm the
+// player raises reaches to the screen's left), in units of the gauge's
+// radius, +y down; cut off at the ring's inner edge like a bust.
 float figure(float2 p, float edge) {
-    float d = length(p - float2(0.0, -0.42)) - 0.12;                         // head
-    d = min(d, segment(p, float2(-0.1, -0.24), float2(0.1, -0.24)) - 0.05);    // shoulders
-    d = min(d, segment(p, float2(0.0, -0.24), float2(0.0, 0.12)) - 0.065);     // body
-    d = min(d, segment(p, float2(0.0, 0.12), float2(-0.13, 0.5)) - 0.055);     // legs
-    d = min(d, segment(p, float2(0.0, 0.12), float2(0.13, 0.5)) - 0.055);
-    d = min(d, segment(p, float2(0.1, -0.24), float2(0.16, 0.12)) - 0.05);     // right arm, down
-    d = min(d, segment(p, float2(-0.1, -0.24), float2(-0.42, 0.08)) - 0.055);  // left arm, out at 45
-    return 1.0 - smoothstep(-edge, edge, d);
+    float d = length(p - float2(0.05, -0.3)) - 0.14;                            // head
+    d = min(d, rounded_box(p, float2(0.06, 0.26), float2(0.18, 0.3), 0.12));     // body
+    d = min(d, segment(p, float2(-0.05, 0.02), float2(-0.36, 0.33)) - 0.075);    // arm, out at 45
+    const float inside = 1.0 - smoothstep(0.6 - edge, 0.6 + edge, length(p));
+    return (1.0 - smoothstep(-edge, edge, d)) * inside;
 }
 
 // The Pause Gesture's gauge at c (x, y, radius, 3 + progress).
