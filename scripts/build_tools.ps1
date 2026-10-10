@@ -91,6 +91,8 @@ $targets += 'sfr_pause_gesture_test'
 $targets += 'sfr_voice_commands_test'
 # Checking a real Kinect without the game (docs/kinect-sensor.md).
 $targets += 'sfr_kinect_probe'
+# The webcam adjustment window without the game.
+$targets += 'sfr_camera_tuner_probe'
 $targets += 'sfr_pose_mediapipe_test'
 $targets += 'sfr_camera_debug_test'
 $targets += 'sfr_text_wrap_test'

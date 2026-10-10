@@ -481,6 +481,16 @@ add_executable(sfr_pose_mediapipe_test tests/pose_mediapipe_test.cpp src/pose_me
 target_include_directories(sfr_pose_mediapipe_test PRIVATE src)
 add_test(NAME pose_mediapipe COMMAND sfr_pose_mediapipe_test)
 if(WIN32)
+    # The webcam adjustment window over a real camera, without the game.
+    add_executable(sfr_camera_tuner_probe tests/camera_tuner_probe.cpp src/camera_player.cpp src/camera_tuner.cpp
+        src/camera_tuner_window.cpp src/pose_skeleton.cpp src/pose_smoothing.cpp src/pose_stability.cpp
+        ${SFR_CAMERA_CAPTURE} ${SFR_POSE_SOURCES})
+    target_include_directories(sfr_camera_tuner_probe PRIVATE src)
+    target_link_libraries(sfr_camera_tuner_probe PRIVATE user32 gdi32 comctl32 ${SFR_CAMERA_LIBRARIES})
+    if(SFR_POSE_AVAILABLE)
+        target_link_libraries(sfr_camera_tuner_probe PRIVATE sfr_onnxruntime)
+        sfr_copy_onnx_dlls(sfr_camera_tuner_probe)
+    endif()
     add_executable(sfr_camera_debug_probe tests/camera_debug_probe.cpp src/camera_debug.cpp src/camera_debug_window.cpp)
     target_include_directories(sfr_camera_debug_probe PRIVATE src)
     target_link_libraries(sfr_camera_debug_probe PRIVATE user32 gdi32)
