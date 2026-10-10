@@ -941,7 +941,7 @@ if(SFR_BUILD_DIAGNOSTIC)
     target_sources(sfr_cpu_diagnostic PRIVATE src/native_input.cpp src/input_bindings.cpp src/pad_assignment.cpp src/pad_devices.cpp src/sony_gamepad.cpp src/native_audio.cpp src/nui_skeleton.cpp src/nui_speech.cpp src/nui_race.cpp)
     target_sources(sfr_cpu_diagnostic PRIVATE src/guest_printf.cpp)
     if(WIN32)
-        target_link_libraries(sfr_cpu_diagnostic PRIVATE xinput hid setupapi xaudio2 ole32)
+        target_link_libraries(sfr_cpu_diagnostic PRIVATE xinput hid setupapi xaudio2 ole32 comctl32)
         # Symbol map for host-side profiling (SFR_HOST_PROFILE).
         target_link_options(sfr_cpu_diagnostic PRIVATE "/MAP:$<TARGET_FILE_DIR:sfr_cpu_diagnostic>/sfr_cpu_diagnostic.map")
     endif()

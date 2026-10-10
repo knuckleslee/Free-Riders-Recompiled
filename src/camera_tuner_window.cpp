@@ -8,10 +8,14 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <commctrl.h>
+
+#pragma comment(lib, "comctl32.lib")
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -46,6 +50,115 @@ struct CameraTunerWindow::Impl {
     std::stop_token stopping;
     CameraView view;
     std::chrono::steady_clock::time_point opened_at{}, last_picture{};
+    // The camera's controls: a row each it offers, with "auto" where it can
+    // choose for itself (camera_capture.h).
+    struct Row {
+        bool offered = false;
+        CameraControlRange range;
+        CameraControlValue value;
+        HWND name = nullptr, slider = nullptr, automatic = nullptr, automatic_label = nullptr, shown = nullptr;
+    };
+    std::array<Row, size_t(CameraControl::count)> rows{};
+    size_t offered_rows = 0;
+    HFONT control_font = nullptr;
+    HBRUSH background_brush = nullptr;
+    std::chrono::steady_clock::time_point controls_read{};
+    static constexpr int row_height = 34, slider_id = 200, automatic_id = 300;
+
+    std::wstring shown_value(CameraControl control, long value) const {
+        wchar_t words[64];
+        if (control == CameraControl::exposure) {
+            // log2 seconds: -6 is 1/64 s.
+            if (value < 0 && value > -31) std::swprintf(words, 64, L"1/%ld s", 1L << -value);
+            else if (value >= 0 && value < 31) std::swprintf(words, 64, L"%ld s", 1L << value);
+            else std::swprintf(words, 64, L"%ld", value);
+        } else std::swprintf(words, 64, L"%ld", value);
+        return words;
+    }
+
+    void create_controls(HWND window, HINSTANCE instance) {
+        const wchar_t* const names[] = {L"Zoom", L"縮放", L"Exposure (shutter)", L"曝光（快門）", L"Gain", L"增益"};
+        for (size_t c = 0; c < rows.size(); ++c) {
+            Row& row = rows[c];
+            const auto control = CameraControl(c);
+            if (!player->control_range(control, row.range)) continue;
+            row.offered = true;
+            ++offered_rows;
+            if (!player->control(control, row.value)) row.value = {row.range.standard, row.range.can_auto};
+            const auto make = [&](const wchar_t* type, const wchar_t* words, DWORD style, int id) {
+                HWND made = CreateWindowExW(0, type, words, WS_CHILD | WS_VISIBLE | style, 0, 0, 0, 0, window,
+                                            reinterpret_cast<HMENU>(INT_PTR(id)), instance, nullptr);
+                if (made && control_font) SendMessageW(made, WM_SETFONT, WPARAM(control_font), TRUE);
+                return made;
+            };
+            row.name = make(L"STATIC", say(names[2 * c], names[2 * c + 1]).c_str(), SS_LEFT, 0);
+            row.slider = make(TRACKBAR_CLASSW, L"", TBS_HORZ | TBS_NOTICKS, slider_id + int(c));
+            SendMessageW(row.slider, TBM_SETRANGEMIN, FALSE, row.range.minimum);
+            SendMessageW(row.slider, TBM_SETRANGEMAX, FALSE, row.range.maximum);
+            SendMessageW(row.slider, TBM_SETLINESIZE, 0, row.range.step);
+            SendMessageW(row.slider, TBM_SETPAGESIZE, 0, row.range.step);
+            SendMessageW(row.slider, TBM_SETPOS, TRUE, row.value.value);
+            if (row.range.can_auto) {
+                // The box without words: a themed box ignores the text colour.
+                row.automatic = make(L"BUTTON", L"", BS_AUTOCHECKBOX, automatic_id + int(c));
+                SendMessageW(row.automatic, BM_SETCHECK, row.value.automatic ? BST_CHECKED : BST_UNCHECKED, 0);
+                row.automatic_label = make(L"STATIC", say(L"Auto", L"自動").c_str(), SS_LEFT, 0);
+            }
+            row.shown = make(L"STATIC", shown_value(control, row.value.value).c_str(), SS_LEFT, 0);
+        }
+    }
+
+    void place_controls(HWND window) {
+        RECT rect;
+        GetClientRect(window, &rect);
+        int y = rect.bottom - 40 - int(offered_rows) * row_height;
+        for (Row& row : rows) {
+            if (!row.offered) continue;
+            MoveWindow(row.name, 20, y + 7, 150, 22, TRUE);
+            const int slider_left = 180, slider_right = std::max<int>(slider_left + 100, rect.right - 290);
+            MoveWindow(row.slider, slider_left, y + 2, slider_right - slider_left, 30, TRUE);
+            MoveWindow(row.shown, slider_right + 10, y + 7, 100, 22, TRUE);
+            if (row.automatic) {
+                MoveWindow(row.automatic, slider_right + 120, y + 8, 20, 20, TRUE);
+                MoveWindow(row.automatic_label, slider_right + 144, y + 7, 100, 22, TRUE);
+            }
+            y += row_height;
+        }
+    }
+
+    // The player moved a slider or ticked a box.
+    void changed(size_t c, bool from_box) {
+        Row& row = rows[c];
+        const auto control = CameraControl(c);
+        CameraControlValue wanted = row.value;
+        if (from_box) {
+            wanted.automatic = SendMessageW(row.automatic, BM_GETCHECK, 0, 0) == BST_CHECKED;
+            wanted.value = long(SendMessageW(row.slider, TBM_GETPOS, 0, 0));
+        } else {
+            // Moving the slider is choosing a value: no longer automatic.
+            wanted = {long(SendMessageW(row.slider, TBM_GETPOS, 0, 0)), false};
+            if (row.automatic) SendMessageW(row.automatic, BM_SETCHECK, BST_UNCHECKED, 0);
+        }
+        if (wanted == row.value) return;
+        if (player->set_control(control, wanted)) row.value = wanted;
+        SetWindowTextW(row.shown, shown_value(control, row.value.value).c_str());
+    }
+
+    // While automatic, the camera moves the value itself: show where it is.
+    void reread_controls() {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - controls_read < std::chrono::seconds(1)) return;
+        controls_read = now;
+        for (size_t c = 0; c < rows.size(); ++c) {
+            Row& row = rows[c];
+            if (!row.offered || !row.value.automatic) continue;
+            CameraControlValue now_value;
+            if (!player->control(CameraControl(c), now_value) || now_value.value == row.value.value) continue;
+            row.value.value = now_value.value;
+            SendMessageW(row.slider, TBM_SETPOS, TRUE, row.value.value);
+            SetWindowTextW(row.shown, shown_value(CameraControl(c), row.value.value).c_str());
+        }
+    }
     // Last member: joins before everything above is destroyed.
     std::jthread worker;
 
@@ -130,7 +243,8 @@ struct CameraTunerWindow::Impl {
         const int top = 76, gap = 20;
         const uint32_t pw = view.picture.width, ph = view.picture.height;
         if (pw && ph && view.picture.bgra.size() >= size_t(pw) * ph * 4) {
-            const int area_w = std::max(0, width - 2 * gap), area_h = std::max(0, height - top - 40);
+            const int area_w = std::max(0, width - 2 * gap);
+            const int area_h = std::max(0, height - top - 50 - int(offered_rows) * row_height);
             const double scale = std::min(double(area_w) / pw, double(area_h) / ph);
             const int w = int(pw * scale), h = int(ph * scale);
             const int left = (width - w) / 2;
@@ -166,7 +280,10 @@ struct CameraTunerWindow::Impl {
                 DeleteObject(pen);
             }
         }
-        text(dc, gap, height - 28, say(L"Close this window to go back to the game.", L"關閉此視窗即可回到遊戲。"), dim);
+        text(dc, gap, height - 28, offered_rows ? say(L"Close this window to go back to the game. Settings are kept for this camera.",
+                                                     L"關閉此視窗即可回到遊戲。調整會記住，下次開啟這台攝影機時套用。")
+                                                 : say(L"Close this window to go back to the game. This camera offers no zoom, exposure or gain setting.",
+                                                       L"關閉此視窗即可回到遊戲。這台攝影機沒有提供縮放、曝光或增益的調整。"), dim);
         BitBlt(target, 0, 0, width, height, dc, 0, 0, SRCCOPY);
         SelectObject(dc, old_font);
         SelectObject(dc, old_bitmap);
@@ -187,8 +304,27 @@ struct CameraTunerWindow::Impl {
             if (self->stopping.stop_requested()) DestroyWindow(window);
             else {
                 if (self->player->view(self->view)) self->last_picture = std::chrono::steady_clock::now();
+                self->reread_controls();
                 InvalidateRect(window, nullptr, FALSE);
             }
+            return 0;
+        case WM_HSCROLL:
+            for (size_t c = 0; c < self->rows.size(); ++c)
+                if (self->rows[c].slider && reinterpret_cast<HWND>(lp) == self->rows[c].slider) self->changed(c, false);
+            return 0;
+        case WM_COMMAND:
+            if (HIWORD(wp) == BN_CLICKED && LOWORD(wp) >= automatic_id && LOWORD(wp) < automatic_id + int(self->rows.size()))
+                self->changed(LOWORD(wp) - automatic_id, true);
+            return 0;
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN: {
+            HDC dc = reinterpret_cast<HDC>(wp);
+            SetTextColor(dc, foreground);
+            SetBkColor(dc, background);
+            return reinterpret_cast<LRESULT>(self->background_brush);
+        }
+        case WM_SIZE:
+            self->place_controls(window);
             return 0;
         case WM_ERASEBKGND: return 1;
         case WM_PAINT: {
@@ -216,6 +352,12 @@ struct CameraTunerWindow::Impl {
         opened_at = std::chrono::steady_clock::now();
         player->share_view(true);
         const HINSTANCE instance = GetModuleHandleW(nullptr);
+        INITCOMMONCONTROLSEX classes{sizeof(classes), ICC_BAR_CLASSES};
+        InitCommonControlsEx(&classes);
+        control_font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                                   CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH,
+                                   chinese ? L"Microsoft JhengHei UI" : L"Segoe UI");
+        background_brush = CreateSolidBrush(background);
         WNDCLASSW cls{};
         cls.lpfnWndProc = procedure;
         cls.hInstance = instance;
@@ -225,9 +367,11 @@ struct CameraTunerWindow::Impl {
         if (RegisterClassW(&cls) || GetLastError() == ERROR_CLASS_ALREADY_EXISTS)
             window = CreateWindowExW(WS_EX_TOPMOST, cls.lpszClassName,
                                      chinese ? L"Free Riders - Webcam 調整" : L"Free Riders - Webcam adjustment",
-                                     WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 900, 680, nullptr, nullptr,
+                                     WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 900, 780, nullptr, nullptr,
                                      instance, this);
         if (window && SetTimer(window, 1, 33, nullptr)) {
+            create_controls(window, instance);
+            place_controls(window);
             ShowWindow(window, SW_SHOW);
             MSG message;
             while (!stop.stop_requested() && GetMessageW(&message, nullptr, 0, 0) > 0) {
@@ -236,6 +380,8 @@ struct CameraTunerWindow::Impl {
             }
         }
         if (window && IsWindow(window)) DestroyWindow(window);
+        if (control_font) DeleteObject(control_font);
+        if (background_brush) DeleteObject(background_brush);
         player->share_view(false);
         is_closed.store(true);
     }

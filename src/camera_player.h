@@ -48,6 +48,10 @@ public:
     // The newest picture, if one newer than view.picture.number has been
     // kept. False leaves the view alone.
     bool view(CameraView& view);
+    // The camera's own controls (zoom, exposure, gain), for the window.
+    bool control_range(CameraControl control, CameraControlRange& range);
+    bool control(CameraControl control, CameraControlValue& value);
+    bool set_control(CameraControl control, const CameraControlValue& value);
 
     struct Impl;
 private:

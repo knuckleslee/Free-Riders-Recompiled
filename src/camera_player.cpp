@@ -162,6 +162,16 @@ bool CameraPlayer::view(CameraView& view) {
     return true;
 }
 
+bool CameraPlayer::control_range(CameraControl control, CameraControlRange& range) {
+    return impl_->camera->control_range(control, range);
+}
+bool CameraPlayer::control(CameraControl control, CameraControlValue& value) {
+    return impl_->camera->control(control, value);
+}
+bool CameraPlayer::set_control(CameraControl control, const CameraControlValue& value) {
+    return impl_->camera->set_control(control, value);
+}
+
 bool CameraPlayer::tracking() const { return impl_->ever_found.load(std::memory_order_relaxed); }
 
 }
