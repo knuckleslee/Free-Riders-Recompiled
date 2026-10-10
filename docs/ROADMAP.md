@@ -6,6 +6,8 @@
 
 - **暫停手勢（Pause Gesture）與 Kinect 調整視窗**：已實作，等待實機測試
   （[Kinect 與 Kinect v2](kinect-sensor.md)、[攝影機體感](camera-input.md)）。
+- **Kinect 深度分層**：手臂經過軀幹前方時，用 Kinect v1 的深度影像分辨手在身體前還是後，
+  補強遮擋保持（參考 [Kinect Remold 筆記](notes/kinect-remold.md) 第 1 點）。
 - **自動仰角**：依站位自動調整 Kinect 馬達仰角。延後。
 - **可關閉進入比賽前的校正**：進入比賽（以及從手把或失去追蹤回到體感）時，目前要先站好
   約一秒做站姿校正。加一個設定讓玩家關掉這一步，改用上一次的校正結果；第一次遊玩、

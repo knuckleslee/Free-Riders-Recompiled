@@ -228,6 +228,22 @@ mingw 編譯連結過。Kinect for Xbox 360（v1）已在實機上讀到骨架�
   遊戲是否自己呼叫平滑，可以用
   `scripts/analyse_detectors.py ... --calls-into 82760000-82780000` 列出遊戲呼叫 NUI 函式庫的每一處來查。
 
+### 遮住的關節與選單游標
+
+骨架大致照原樣交給遊戲，只有兩處和主機不同（[`kinect_stability.h`](../src/kinect_stability.h)，
+和 webcam 共用 [`pose_stability.h`](../src/pose_stability.h) 的兩個檢查；尚未實機測試）：
+
+- **遮住的四肢點**：手臂交叉、手放到背後時，SDK 仍會給一個「推測」的位置，常會跳動、把手臂折錯方向或
+  左右對調。手肘、手腕、膝蓋、腳踝只有在 SDK 標成「追蹤中」、骨長沒有突然變長（超過平常的 1.6 倍）、
+  也沒有一格跳太遠（相對上一節超過 0.45 公尺）時才採用；否則固定在相對上一節的位置，跟著身體移動，
+  最多 0.25 秒後再交回給 SDK。手腕或腳踝被固定時，手掌或腳掌跟著一起移動。追蹤中、合理的點完全不動。
+- **選單游標**：選單中（不在比賽時）雙手以肩膀為準，靜止時小幅晃動不移動游標，慢慢移動立刻跟上，
+  快速移動完全不延遲，單一格的突跳忽略。比賽中不作用。
+
+每個被追蹤的人各自記憶，依 SDK 追蹤編號區分。`SFR_POSE_STABILIZE=0` 關閉第一項、`SFR_MENU_HAND_STEADY=0`
+關閉第二項（和 webcam 共用同一組開關），用來比較修正前後。log：`NATIVE_KINECT_BODY ... held_points=`
+是上一行之後被固定的點數。
+
 ### 預覽視窗
 
 啟動器 Kinect 設定的「Kinect 感測器」→「開啟預覽」開一個視窗（取代原本的「測試」：開不起來時一樣顯示原因與 SDK 下載按鈕）（[`kinect_preview_window.cpp`](../src/kinect_preview_window.cpp)，

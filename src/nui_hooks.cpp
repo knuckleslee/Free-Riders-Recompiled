@@ -5,6 +5,7 @@
 #include "kinect_sensor.h"
 #include "kinect_preview.h"
 #include "kinect_tuner.h"
+#include "kinect_stability.h"
 #include "native_input.h"
 #include "camera_debug.h"
 #include "camera_input.h"
@@ -63,6 +64,8 @@ std::atomic<bool> sensor_body{false};
 std::atomic<bool> sensor_depth{false};
 std::atomic<uint64_t> kinect_generation{0};  // kinect_frame_generation
 sfr::KinectFrame kinect_frame;
+// Limb points held (kinect_stability.h) since the last body line in the log.
+uint64_t kinect_held_points=0;
 sfr::KinectPlayerSlots kinect_players;
 // The Pause Gesture (pause_gesture.h): seen on the skeleton hook,
 // heard as the pause command by the next input update.
@@ -521,6 +524,17 @@ SFR_INPUT_HOOK(sub_827707B0) {
             }
         } else {
             received=kinect->next(kinect_frame);
+            if(received) {
+                // Hidden limbs held, the menu cursor steadied
+                // (kinect_stability.h), before anything reads the frame.
+                static sfr::KinectBodySteadying steadying=sfr::KinectBodySteadying::from_environment();
+                static std::chrono::steady_clock::time_point last_captured{};
+                const double interval=last_captured.time_since_epoch().count()
+                    ? std::chrono::duration<double>(kinect_frame.captured_at-last_captured).count() : 0.0;
+                last_captured=kinect_frame.captured_at;
+                steadying.steady(kinect_frame.bodies,interval,!racing);
+                kinect_held_points+=steadying.held();
+            }
             expired=sfr::kinect_expire_frame(kinect_frame,std::chrono::steady_clock::now());
             // The adjustment window sees the frames the game reads, not its own.
             if(received) {
@@ -556,6 +570,7 @@ SFR_INPUT_HOOK(sub_827707B0) {
             if(generation%90==1) {
                 std::ostringstream line;
                 line<<"NATIVE_KINECT_BODY frame="<<generation<<" gravity_y="<<gravity_y<<" level="<<tilt
+                    <<" held_points="<<kinect_held_points
                     <<" bodies="<<kinect_frame.bodies.size();
                 if(!kinect_frame.bodies.empty()) {
                     const auto& body=kinect_frame.bodies.front();
@@ -572,6 +587,7 @@ SFR_INPUT_HOOK(sub_827707B0) {
                         <<body.joint_states[sfr::nui_joint::hand_right];
                 }
                 std::cerr<<line.str()<<'\n';
+                kinect_held_points=0;
             }
         }
         sfr::publish_second_player_pad(std::nullopt);
