@@ -1747,12 +1747,13 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
         std::string_view(name) == "__imp__XamShowNuiGuideUI") {
         // The menu's Kinect adjustment: with a real Kinect, the preview
         // window over the game's sensor stands in for the system's Kinect
-        // troubleshooter or Kinect Guide (kinect_tuner.h). The system UI is
-        // shown (XN_SYS_UI 1) until the window closes, then hidden.
+        // troubleshooter or Kinect Guide, with the webcam the webcam's
+        // adjustment window (kinect_tuner.h). The system UI is shown
+        // (XN_SYS_UI 1) until the window closes, then hidden.
         const sfr::KinectTuner tuner = sfr::open_kinect_tuner();
         if (tuner != sfr::KinectTuner::unavailable) {
             std::cerr << "NUI_SYSTEM_UI " << std::string_view(name).substr(7) << " lr=0x" << std::hex << ctx.lr << std::dec
-                      << " result=0 backend=kinect-preview" << (tuner == sfr::KinectTuner::already_open ? " already-open" : "") << '\n';
+                      << " result=0 backend=adjustment-window" << (tuner == sfr::KinectTuner::already_open ? " already-open" : "") << '\n';
             if (tuner == sfr::KinectTuner::opened && native_notifications) {
                 constexpr uint32_t xn_sys_ui = 0x00000009;
                 native_notifications->publish(xn_sys_ui, 1);

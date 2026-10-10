@@ -266,6 +266,6 @@ Kinect 疑難排解（`XamShowNuiTroubleshooterUI`）或 Kinect Guide（`XamShow
 實測遊戲在系統畫面開著時不會自己停住，玩家還能繞過視窗操作遊戲，離開選單後遊戲就不正常了；所以視窗開著時
 遊戲等在後面：手把與鍵盤一律讀成放開（`set_input_held`），Kinect 只送一格雙手垂在身側的骨架給遊戲
 （`kinect_arms_down`：選單游標要舉手才會出現，手停在按鈕上也不會一直按下），之後不再更新，暫停手勢也不作用；
-視窗照常顯示感應器的即時畫面。關閉視窗後一切恢復。用 webcam 或手把時照舊打開就關閉。log：
-`NUI_SYSTEM_UI ... backend=kinect-preview`、`NUI_KINECT_TUNER opened=1`、`NUI_KINECT_TUNER input=held`、
+視窗照常顯示感應器的即時畫面。關閉視窗後一切恢復。用 webcam 時改開「Webcam 調整」視窗（見[攝影機體感](camera-input.md)），只用手把時照舊打開就關閉。log：
+`NUI_SYSTEM_UI ... backend=adjustment-window`、`NUI_KINECT_TUNER opened=1 source=kinect`、`NUI_KINECT_TUNER input=held`、
 `NUI_KINECT_TUNER input=released`、`NUI_KINECT_TUNER closed`。

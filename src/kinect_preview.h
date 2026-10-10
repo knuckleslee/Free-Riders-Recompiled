@@ -77,4 +77,6 @@ KinectImagePoint kinect_colour_point(const std::array<float, 3>& p);
 // stood, its arms hanging at its sides, so no menu cursor is raised and a
 // hand left resting on a button does not keep pressing it.
 void kinect_arms_down(KinectBody& body);
+// The same for a skeleton without tracking states (the webcam's player).
+void arms_down(SkeletonJoints& joints);
 }
