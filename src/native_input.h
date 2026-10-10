@@ -47,6 +47,12 @@ void write_xinput_state(GuestMemory& memory, uint32_t address, uint32_t packet, 
 struct InputBindings;
 enum class PlayerDevice : uint8_t;
 
+// While held (the Kinect adjustment window is open), every connected
+// controller and the keyboard read as at rest: the game waits behind the
+// window as it did behind the console's system UI.
+void set_input_held(bool held);
+bool input_held();
+
 class NativeInput {
 public:
     // pad(user) reads a host controller; keyboard() reads the fallback keys

@@ -1761,6 +1761,7 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
                 watch = std::jthread([](std::stop_token stop) {
                     while (!stop.stop_requested() && sfr::kinect_tuner_open())
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    sfr::set_input_held(false);
                     if (native_notifications) native_notifications->publish_when_drained(xn_sys_ui, 0);
                     std::cerr << "NUI_KINECT_TUNER closed\n";
                 });

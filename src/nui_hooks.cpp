@@ -5,6 +5,7 @@
 #include "kinect_sensor.h"
 #include "kinect_preview.h"
 #include "kinect_tuner.h"
+#include "native_input.h"
 #include "camera_debug.h"
 #include "camera_input.h"
 #include "pause_gesture.h"
@@ -139,6 +140,9 @@ KinectTuner open_kinect_tuner() {
     tuner.reset();  // a closed one: its thread has ended
     tuner=KinectPreviewWindow::open_over(*kinect);
     std::cerr << "NUI_KINECT_TUNER opened=" << (tuner?1:0) << '\n';
+    // The game waits behind the window: the controllers and the keyboard
+    // read as at rest until it closes (the input update lets go).
+    if(tuner) sfr::set_input_held(true);
     return tuner ? KinectTuner::opened : KinectTuner::unavailable;
 }
 bool kinect_tuner_open() {
@@ -222,7 +226,7 @@ bool dialog_seen=false;
 // gesture there would be START answering it.
 bool pause_gesture_active(bool racing) {
     const auto recent=[](uint64_t frame) { return frame && input_frames-frame<=30; };
-    return racing && now_ms()-ring_asked_ms.load(std::memory_order_relaxed)>500 &&
+    return racing && !kinect_tuner_open() && now_ms()-ring_asked_ms.load(std::memory_order_relaxed)>500 &&
            !recent(menu_page_frame) && !recent(menu_manager_frame) && !(dialog_seen && recent(dialog_frame));
 }
 }
@@ -497,13 +501,37 @@ SFR_INPUT_HOOK(sub_827707B0) {
         // console (asking the player to step in). The pads keep their voice
         // commands and menu buttons (the input update below).
         auto& memory=*sfr::active_memory;
+        // While the adjustment window is open the game is given one frame
+        // with every arm hanging down, then nothing new: no cursor, no
+        // gesture, nobody leaving. The window sees the sensor throughout.
+        const bool tuning=kinect_tuner_open();
+        static bool arms_given=false;
+        static sfr::KinectFrame tuner_frame;
+        if(!tuning) {
+            if(arms_given) std::cerr << "NUI_KINECT_TUNER input=released\n";
+            arms_given=false;
+            sfr::set_input_held(false);
+        }
         // Turned once per new frame: the last one is kept as it was turned.
-        const bool received=kinect->next(kinect_frame);
-        const bool expired=sfr::kinect_expire_frame(kinect_frame,std::chrono::steady_clock::now());
-        // The adjustment window sees the frames the game reads, not its own.
-        if(received) {
-            std::lock_guard guard(tuner_lock);
-            if(tuner && !tuner->closed()) tuner->show_frame(kinect_frame);
+        bool received=false, expired=false;
+        if(tuning && arms_given) {
+            if(kinect->next(tuner_frame)) {
+                std::lock_guard guard(tuner_lock);
+                if(tuner && !tuner->closed()) tuner->show_frame(tuner_frame);
+            }
+        } else {
+            received=kinect->next(kinect_frame);
+            expired=sfr::kinect_expire_frame(kinect_frame,std::chrono::steady_clock::now());
+            // The adjustment window sees the frames the game reads, not its own.
+            if(received) {
+                std::lock_guard guard(tuner_lock);
+                if(tuner && !tuner->closed()) tuner->show_frame(kinect_frame);
+            }
+            if(tuning && received) {
+                for(sfr::KinectBody& body:kinect_frame.bodies) sfr::kinect_arms_down(body);
+                arms_given=true;
+                std::cerr << "NUI_KINECT_TUNER input=held bodies=" << kinect_frame.bodies.size() << '\n';
+            }
         }
         if(received || expired) {
             // The title stores two fully tracked body indices, even though

@@ -72,4 +72,9 @@ constexpr double kinect_frame_timeout_seconds = 1.5, kinect_first_frame_seconds 
 struct KinectImagePoint { float x = 0, y = 0; bool visible = false; };
 KinectImagePoint kinect_depth_point(const std::array<float, 3>& p);
 KinectImagePoint kinect_colour_point(const std::array<float, 3>& p);
+
+// The body the game is given while the adjustment window is open: as it
+// stood, its arms hanging at its sides, so no menu cursor is raised and a
+// hand left resting on a button does not keep pressing it.
+void kinect_arms_down(KinectBody& body);
 }

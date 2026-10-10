@@ -294,6 +294,29 @@ int main() {
             require(r.ready() && r.first_failed == KinectStep::count, "a tracked body passes every step");
         }
 
+        {
+            // The adjustment window's body: arms hanging below the shoulders,
+            // under the shoulder line, so no hand is raised as a menu cursor.
+            namespace joint = sfr::nui_joint;
+            sfr::KinectBody body;
+            body.joints[joint::hip_center] = {0.0f, 0.0f, 2.4f};
+            body.joints[joint::shoulder_center] = {0.0f, 0.5f, 2.4f};
+            body.joints[joint::shoulder_left] = {-0.18f, 0.5f, 2.4f};
+            body.joints[joint::shoulder_right] = {0.18f, 0.5f, 2.4f};
+            body.joints[joint::hand_right] = {0.3f, 0.9f, 2.0f};  // raised, reaching
+            body.joints[joint::hand_left] = {-0.2f, 0.7f, 2.1f};
+            body.joint_states[joint::hand_right] = 1;
+            sfr::kinect_arms_down(body);
+            for (uint32_t hand : {joint::hand_left, joint::wrist_left, joint::elbow_left,
+                                  joint::hand_right, joint::wrist_right, joint::elbow_right}) {
+                require(body.joints[hand][1] < 0.5f - 0.2f, "every arm point hangs below the shoulders");
+                require(body.joints[hand][2] == 2.4f && body.joint_states[hand] == 2, "at the body's depth, tracked");
+            }
+            require(body.joints[joint::hand_right][0] == 0.18f && body.joints[joint::hand_left][0] == -0.18f,
+                    "each hand below its own shoulder");
+            require(body.joints[joint::hand_right][1] < body.joints[joint::elbow_right][1], "the hand below the elbow");
+        }
+
         std::string why;
         if (!sfr::KinectSensor::supported())
             require(!sfr::KinectSensor::open(&why) && !why.empty(), "a platform without a runtime says why");

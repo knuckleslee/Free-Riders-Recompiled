@@ -1,4 +1,5 @@
 #include "kinect_preview.h"
+#include <cmath>
 
 namespace sfr {
 // NuiImageCamera.h: NUI_CAMERA_DEPTH_NOMINAL_FOCAL_LENGTH_IN_PIXELS (at
@@ -45,5 +46,22 @@ KinectReadiness kinect_readiness(const KinectReadinessInput& input) {
     set(KinectStep::frames, KinectStepState::passed);
     set(KinectStep::body, input.bodies ? KinectStepState::passed : KinectStepState::failed);
     return result;
+}
+void kinect_arms_down(KinectBody& body) {
+    namespace joint = nui_joint;
+    // Sensor space: +y up, metres. Each arm hangs straight below its
+    // shoulder, the elbow at the waist, the hand a little lower, at the
+    // depth of the hips.
+    const auto& hips = body.joints[joint::hip_center];
+    const float drop = std::fmax(body.joints[joint::shoulder_center][1] - hips[1], 0.3f);
+    for (const auto& arm : {std::array<uint32_t, 4>{joint::shoulder_left, joint::elbow_left, joint::wrist_left, joint::hand_left},
+                            std::array<uint32_t, 4>{joint::shoulder_right, joint::elbow_right, joint::wrist_right, joint::hand_right}}) {
+        const auto shoulder = body.joints[arm[0]];
+        const float below[] = {0.55f, 1.0f, 1.1f};
+        for (size_t i = 0; i < 3; ++i) {
+            body.joints[arm[i + 1]] = {shoulder[0], shoulder[1] - drop * below[i], hips[2]};
+            body.joint_states[arm[i + 1]] = 2;
+        }
+    }
 }
 }
