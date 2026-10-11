@@ -11,32 +11,63 @@
 #endif
 #include <windows.h>
 
+#include <atomic>
+#include <chrono>
 #include <condition_variable>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <cwchar>
 #include <iostream>
 #include <mutex>
 #include <string>
 #include <thread>
 
 namespace sfr {
+// Frames presented so far (guest_graphics_hooks.cpp).
+extern std::atomic<uint32_t> present_count;
+
 namespace {
 // The title is changed on a thread of its own: setting another thread's
 // window text waits for that thread (the presentation's) to answer, and the
 // input update must never wait on it -- the presentation may be waiting on
 // the game. Each change gives up after a quarter of a second.
+//
+// It says the frame rate, counted over the last half second, and, when a
+// body drives the game, whether the menu steadying is on.
 std::mutex title_lock;
 std::condition_variable title_wake;
 HWND title_window = nullptr;
 bool title_wanted = false;
-std::wstring original;
-HWND original_of = nullptr;
+
+bool body_driven() {
+    const char* const camera = std::getenv("SFR_CAMERA");
+    return camera && (std::strcmp(camera, "motion") == 0 || std::strcmp(camera, "kinect") == 0);
+}
 
 void title_worker() {
+    using clock = std::chrono::steady_clock;
+    const bool chinese = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE;
+    const bool body = body_driven();
+    std::wstring original;
+    HWND original_of = nullptr;
+    uint32_t counted = present_count.load(std::memory_order_relaxed);
+    clock::time_point since = clock::now();
+    double fps = 0;
     std::unique_lock guard(title_lock);
     for (;;) {
-        title_wake.wait(guard, [] { return title_wanted; });
+        title_wake.wait_for(guard, std::chrono::milliseconds(500), [] { return title_wanted; });
         title_wanted = false;
         HWND window = title_window;
         guard.unlock();
+        const clock::time_point now = clock::now();
+        const double seconds = std::chrono::duration<double>(now - since).count();
+        if (seconds >= 0.45) {
+            const uint32_t presents = present_count.load(std::memory_order_relaxed);
+            fps = (presents - counted) / seconds;
+            counted = presents;
+            since = now;
+        }
         if (window && IsWindow(window)) {
             DWORD_PTR result = 0;
             if (window != original_of) {
@@ -48,10 +79,14 @@ void title_worker() {
                 }
             }
             if (window == original_of) {
-                const bool chinese = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE;
-                const bool on = menu_steadying();
-                const std::wstring title = original + (chinese ? (on ? L"  [游標穩定：開（F8 切換）]" : L"  [游標穩定：關（F8 切換）]")
-                                                               : (on ? L"  [Menu steadying: on (F8)]" : L"  [Menu steadying: off (F8)]"));
+                wchar_t rate[32];
+                swprintf(rate, 32, L"  [FPS %.1f]", fps);
+                std::wstring title = original + rate;
+                if (body) {
+                    const bool on = menu_steadying();
+                    title += chinese ? (on ? L"  [游標穩定：開（F8 切換）]" : L"  [游標穩定：關（F8 切換）]")
+                                     : (on ? L"  [Menu steadying: on (F8)]" : L"  [Menu steadying: off (F8)]");
+                }
                 SendMessageTimeoutW(window, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(title.c_str()),
                                     SMTO_ABORTIFHUNG | SMTO_BLOCK, 250, &result);
             }
