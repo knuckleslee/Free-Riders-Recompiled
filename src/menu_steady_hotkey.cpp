@@ -1,6 +1,8 @@
 #include "menu_steady_hotkey.h"
 
+#include "native_graphics.h"
 #include "pose_stability.h"
+#include "title_stats.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -33,27 +35,47 @@ namespace {
 // input update must never wait on it -- the presentation may be waiting on
 // the game. Each change gives up after a quarter of a second.
 //
-// It says the frame rate, counted over the last half second, and, when a
-// body drives the game, whether the menu steadying is on.
+// Every half second it says the frame rate and the frame times, the
+// graphics, and, when a body drives the game, how often it arrives and
+// whether the menu steadying is on.
 std::mutex title_lock;
 std::condition_variable title_wake;
 HWND title_window = nullptr;
 bool title_wanted = false;
 
-bool body_driven() {
+// Which body drives the game, from the launcher's SFR_CAMERA: 'k' a Kinect,
+// 'w' a webcam, 0 none (a pad).
+char body_source() {
     const char* const camera = std::getenv("SFR_CAMERA");
-    return camera && (std::strcmp(camera, "motion") == 0 || std::strcmp(camera, "kinect") == 0);
+    if (camera && std::strcmp(camera, "kinect") == 0) return 'k';
+    if (camera && std::strcmp(camera, "motion") == 0) return 'w';
+    return 0;
+}
+
+// "Vulkan 100%": the graphics the frames are drawn with, as the launcher
+// chose them (native_presentation.cpp reads the same scale).
+std::wstring graphics_label() {
+    std::wstring label = selected_graphics_backend() == GraphicsBackend::vulkan ? L"Vulkan" : L"D3D12";
+    const char* const scale = std::getenv("SFR_RENDER_SCALE");
+    const std::string value = scale ? scale : "";
+    const bool known = value == "50" || value == "75" || value == "100" || value == "150" || value == "200";
+    label += L' ';
+    label += known ? std::wstring(value.begin(), value.end()) : L"100";
+    label += L'%';
+    return label;
 }
 
 void title_worker() {
     using clock = std::chrono::steady_clock;
     const bool chinese = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE;
-    const bool body = body_driven();
+    const char body = body_source();
+    const std::wstring graphics = graphics_label();
     std::wstring original;
     HWND original_of = nullptr;
     uint32_t counted = present_count.load(std::memory_order_relaxed);
     clock::time_point since = clock::now();
-    double fps = 0;
+    take_title_stats();
+    double fps = 0, worst = 0, body_rate = 0, pose_ms = 0;
     std::unique_lock guard(title_lock);
     for (;;) {
         title_wake.wait_for(guard, std::chrono::milliseconds(500), [] { return title_wanted; });
@@ -64,7 +86,11 @@ void title_worker() {
         const double seconds = std::chrono::duration<double>(now - since).count();
         if (seconds >= 0.45) {
             const uint32_t presents = present_count.load(std::memory_order_relaxed);
+            const TitleStats stats = take_title_stats();
             fps = (presents - counted) / seconds;
+            worst = stats.worst_frame_ms;
+            body_rate = (body == 'k' ? stats.kinect_frames : stats.pose_estimates) / seconds;
+            pose_ms = stats.pose_estimates ? stats.pose_ms / stats.pose_estimates : 0;
             counted = presents;
             since = now;
         }
@@ -79,13 +105,23 @@ void title_worker() {
                 }
             }
             if (window == original_of) {
-                wchar_t rate[32];
-                swprintf(rate, 32, L"  [FPS %.1f]", fps);
-                std::wstring title = original + rate;
+                // [FPS 59.8 | 16.7/41.0 ms]: the frame rate, the average
+                // frame and the longest one, which is where a stutter shows.
+                wchar_t part[96];
+                swprintf(part, 96, L"  [FPS %.1f | %.1f/%.1f ms]", fps, fps > 0 ? 1000.0 / fps : 0.0, worst);
+                std::wstring title = original + part;
+                if (body == 'k') {
+                    swprintf(part, 96, L"  [Kinect %.0f]", body_rate);
+                    title += part;
+                } else if (body == 'w') {
+                    swprintf(part, 96, L"  [Webcam %.0f | %.0f ms]", body_rate, pose_ms);
+                    title += part;
+                }
+                title += L"  [" + graphics + L"]";
                 if (body) {
                     const bool on = menu_steadying();
-                    title += chinese ? (on ? L"  [游標穩定：開（F8 切換）]" : L"  [游標穩定：關（F8 切換）]")
-                                     : (on ? L"  [Menu steadying: on (F8)]" : L"  [Menu steadying: off (F8)]");
+                    title += chinese ? (on ? L"  [游標穩定：開 F8]" : L"  [游標穩定：關 F8]")
+                                     : (on ? L"  [Steady: on F8]" : L"  [Steady: off F8]");
                 }
                 SendMessageTimeoutW(window, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(title.c_str()),
                                     SMTO_ABORTIFHUNG | SMTO_BLOCK, 250, &result);

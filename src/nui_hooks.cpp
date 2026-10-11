@@ -19,6 +19,7 @@
 #include "voice_commands.h"
 #include "local_profile.h"
 #include "touch_controls.h"
+#include "title_stats.h"
 #include <bit>
 #include <algorithm>
 #include <unordered_map>
@@ -536,6 +537,7 @@ SFR_INPUT_HOOK(sub_827707B0) {
         } else {
             received=kinect->next(kinect_frame);
             if(received) {
+                sfr::note_kinect_frame();  // for the window's title
                 // The menu cursor steadied (kinect_stability.h) before
                 // anything reads the frame.
                 static sfr::KinectBodySteadying steadying=sfr::KinectBodySteadying::from_environment();
