@@ -67,10 +67,6 @@ std::atomic<bool> sensor_body{false};
 std::atomic<bool> sensor_depth{false};
 std::atomic<uint64_t> kinect_generation{0};  // kinect_frame_generation
 sfr::KinectFrame kinect_frame;
-// Limb points held (kinect_stability.h) since the last body line in the log,
-// and what the depth check said about them (kinect_depth_layer.h).
-uint64_t kinect_held_points=0;
-sfr::KinectDepthCounts kinect_depth_counts;
 sfr::KinectPlayerSlots kinect_players;
 // The Pause Gesture (pause_gesture.h): seen on the skeleton hook,
 // heard as the pause command by the next input update.
@@ -538,31 +534,10 @@ SFR_INPUT_HOOK(sub_827707B0) {
         } else {
             received=kinect->next(kinect_frame);
             if(received) {
-                // Hidden limbs held, the menu cursor steadied
-                // (kinect_stability.h), before anything reads the frame.
+                // The menu cursor steadied (kinect_stability.h) before
+                // anything reads the frame.
                 static sfr::KinectBodySteadying steadying=sfr::KinectBodySteadying::from_environment();
-                static std::chrono::steady_clock::time_point last_captured{};
-                const double interval=last_captured.time_since_epoch().count()
-                    ? std::chrono::duration<double>(kinect_frame.captured_at-last_captured).count() : 0.0;
-                last_captured=kinect_frame.captured_at;
-                // The newest depth and player image, for checking the limbs
-                // against what the sensor saw (SFR_KINECT_DEPTH_LAYER=0 turns
-                // it off). Its own copy: the title's image stream keeps its
-                // own. It arrives beside the skeleton, so it may be a frame
-                // behind it; one not renewed for a tenth of a second is
-                // stale and not used.
-                static sfr::KinectImage depth_image;
-                static std::chrono::steady_clock::time_point depth_at{};
-                const sfr::KinectImage* depth=nullptr;
-                if(kinect->has_depth_stream()) {
-                    const auto now=std::chrono::steady_clock::now();
-                    if(kinect->image(sfr::KinectImageKind::depth_and_player,depth_image)) depth_at=now;
-                    if(depth_image.number && now-depth_at<=std::chrono::milliseconds(100) &&
-                       sfr::kinect_depth_image_usable(depth_image)) depth=&depth_image;
-                }
-                steadying.steady(kinect_frame.bodies,interval,!racing,depth);
-                kinect_held_points+=steadying.held();
-                kinect_depth_counts+=steadying.depth_counts();
+                steadying.steady(kinect_frame.bodies,!racing);
             }
             expired=sfr::kinect_expire_frame(kinect_frame,std::chrono::steady_clock::now());
             // The adjustment window sees the frames the game reads, not its own.
@@ -599,12 +574,6 @@ SFR_INPUT_HOOK(sub_827707B0) {
             if(generation%90==1) {
                 std::ostringstream line;
                 line<<"NATIVE_KINECT_BODY frame="<<generation<<" gravity_y="<<gravity_y<<" level="<<tilt
-                    <<" held_points="<<kinect_held_points
-                    <<" depth_seen="<<kinect_depth_counts.seen<<" depth_hidden="<<kinect_depth_counts.hidden
-                    <<" depth_impossible="<<kinect_depth_counts.impossible
-                    <<" depth_elsewhere="<<kinect_depth_counts.elsewhere<<" depth_unknown="<<kinect_depth_counts.unknown
-                    <<" depth_raised="<<kinect_depth_counts.raised<<" depth_lowered="<<kinect_depth_counts.lowered
-                    <<" depth_unmatched="<<kinect_depth_counts.unmatched
                     <<" bodies="<<kinect_frame.bodies.size();
                 if(!kinect_frame.bodies.empty()) {
                     const auto& body=kinect_frame.bodies.front();
@@ -621,8 +590,6 @@ SFR_INPUT_HOOK(sub_827707B0) {
                         <<body.joint_states[sfr::nui_joint::hand_right];
                 }
                 std::cerr<<line.str()<<'\n';
-                kinect_held_points=0;
-                kinect_depth_counts={};
             }
         }
         sfr::publish_second_player_pad(std::nullopt);

@@ -1,9 +1,8 @@
-// The Kinect's limb holding, depth check and menu steadying (kinect_stability.h)
-// on a real sensor, without the game: four panels, the colour and depth
-// images twice, the skeleton as the SDK gives it above and as the game would
-// be given it below. Keys: M switches race and menu (the menu steadying only
-// acts in menus, and draws the right hand's cursor trail); 1, 2, 3 turn the
-// limb holding, the depth check and the menu steadying on or off below.
+// The Kinect's menu steadying (kinect_stability.h) on a real sensor, without
+// the game: four panels, the colour and depth images twice, the skeleton as
+// the SDK gives it above and as the game would be given it below. Keys: M
+// switches race and menu (the steadying only acts in menus, and the right
+// hand's cursor trail is drawn there); 1 turns the steadying on or off below.
 // The sensor opens for one program at a time: close the game first.
 #include "kinect_preview.h"
 #include "kinect_stability.h"
@@ -41,36 +40,31 @@ struct Compare {
     std::unique_ptr<sfr::KinectSensor> sensor;
     std::string failure;
     bool chinese = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE;
-    bool menu = false, stabilize = true, depth_layer = true, steady_menu = true;
-    sfr::KinectBodySteadying steadying{true, true, true};
+    bool menu = true, steady_menu = true;
+    sfr::KinectBodySteadying steadying{true};
     sfr::KinectFrame raw;
     std::vector<sfr::KinectBody> steadied;
     sfr::KinectImage colour, depth;
     std::vector<uint32_t> colour_pixels, depth_pixels;
-    std::chrono::steady_clock::time_point last_captured{}, depth_at{}, counted_at = std::chrono::steady_clock::now();
+    
     // The right hand's place in the colour image, a second of it, per row.
     std::deque<POINT> trail_raw, trail_steadied;
-    uint64_t held = 0;
-    sfr::KinectDepthCounts counts, shown_counts;
-    uint64_t shown_held = 0;
 
     std::wstring say(const wchar_t* english, const wchar_t* chinese_words) const { return chinese ? chinese_words : english; }
 
     void rebuild() {
-        steadying = sfr::KinectBodySteadying(stabilize, steady_menu, depth_layer);
+        steadying = sfr::KinectBodySteadying(steady_menu);
         trail_raw.clear();
         trail_steadied.clear();
     }
 
     void refresh() {
         if (!sensor) return;
-        const auto now = std::chrono::steady_clock::now();
         if (sensor->image(sfr::KinectImageKind::colour, colour) && colour.bytes_per_pixel == 4) {
             colour_pixels.resize(size_t(colour.width) * colour.height);
             std::memcpy(colour_pixels.data(), colour.pixels.data(), colour_pixels.size() * 4);
         }
         if (sensor->image(sfr::KinectImageKind::depth_and_player, depth) && depth.bytes_per_pixel == 2) {
-            depth_at = now;
             depth_pixels.resize(size_t(depth.width) * depth.height);
             for (size_t i = 0; i < depth_pixels.size(); ++i) {
                 const uint16_t value = uint16_t(depth.pixels[2 * i] | depth.pixels[2 * i + 1] << 8);
@@ -88,24 +82,9 @@ struct Compare {
             }
         }
         if (sensor->next(raw)) {
-            // As the game does it: the frame steadied as it arrives, with the
-            // newest depth image if it is no older than a tenth of a second.
-            const double interval = last_captured.time_since_epoch().count()
-                ? std::chrono::duration<double>(raw.captured_at - last_captured).count() : 0.0;
-            last_captured = raw.captured_at;
+            // As the game does it: the frame steadied as it arrives.
             steadied = raw.bodies;
-            const sfr::KinectImage* image =
-                depth.number && now - depth_at <= std::chrono::milliseconds(100) && sfr::kinect_depth_image_usable(depth) ? &depth : nullptr;
-            steadying.steady(steadied, interval, menu, image);
-            held += steadying.held();
-            counts += steadying.depth_counts();
-        }
-        if (now - counted_at >= std::chrono::seconds(1)) {
-            shown_counts = counts;
-            shown_held = held;
-            counts = {};
-            held = 0;
-            counted_at = now;
+            steadying.steady(steadied, menu);
         }
     }
 
@@ -214,19 +193,15 @@ struct Compare {
             text(dc, 20, 44, say(L"Close the game and other programs using the Kinect, then start this again.",
                                  L"請先關閉遊戲和其他使用 Kinect 的程式，再重新開啟。"), dim);
         } else {
-            const auto onoff = [&](bool on) { return on ? say(L"on", L"開") : say(L"off", L"關"); };
             wchar_t line[256];
-            std::swprintf(line, 256, chinese ? L"模式：%ls（M 切換）   下排：1 遮擋保持 %ls   2 深度分層 %ls   3 游標穩定 %ls%ls"
-                                             : L"Mode: %ls (M)   Below: 1 holding %ls   2 depth check %ls   3 menu steadying %ls%ls",
-                          menu ? say(L"menu", L"選單").c_str() : say(L"race", L"比賽").c_str(), onoff(stabilize).c_str(),
-                          onoff(depth_layer).c_str(), onoff(steady_menu).c_str(),
-                          sensor->has_depth_stream() ? L"" : say(L"   (no depth stream)", L"   （沒有深度串流）").c_str());
+            std::swprintf(line, 256, chinese ? L"模式：%ls（M 切換）   下排：1 游標穩定 %ls%ls"
+                                             : L"Mode: %ls (M)   Below: 1 menu steadying %ls%ls",
+                          menu ? say(L"menu", L"選單").c_str() : say(L"race", L"比賽").c_str(),
+                          steady_menu ? say(L"on", L"開").c_str() : say(L"off", L"關").c_str(),
+                          menu ? L"" : say(L"   (it only acts in menus)", L"   （只在選單作用）").c_str());
             text(dc, 20, 12, line);
-            std::swprintf(line, 256, chinese ? L"每秒：固定的點 %llu   深度判定 看得到 %u 被擋住 %u 不可能 %u 猜錯地方 %u 不確定 %u   調高 %u 調低 %u 軀幹對不上 %u"
-                                             : L"A second: held %llu   depth seen %u hidden %u impossible %u elsewhere %u unknown %u   raised %u lowered %u unmatched %u",
-                          (unsigned long long)shown_held, shown_counts.seen, shown_counts.hidden, shown_counts.impossible,
-                          shown_counts.elsewhere, shown_counts.unknown, shown_counts.raised, shown_counts.lowered, shown_counts.unmatched);
-            text(dc, 20, 34, line, dim);
+            text(dc, 20, 34, say(L"Hold the right hand still as a cursor and compare the two trails.",
+                                 L"右手舉起當游標停住，比較上下兩條軌跡。"), dim);
             // Two rows of two 4:3 panels.
             const int top = 64, gap = 14, label = 22;
             const int panel_w = std::max(0, std::min((width - 3 * gap) / 2, ((height - top - 30 - 2 * label - gap) / 2) * 4 / 3));
@@ -235,7 +210,7 @@ struct Compare {
             for (int row = 0; row < 2; ++row) {
                 const int y = top + row * (panel_h + label + gap) + label;
                 const bool below = row == 1;
-                text(dc, left, y - label, below ? say(L"NEW: holding + depth check + menu steadying", L"新技術：遮擋保持＋深度分層＋游標穩定")
+                text(dc, left, y - label, below ? say(L"NEW: menu steadying", L"新技術：游標穩定")
                                                 : say(L"BEFORE: the SDK's skeleton as it is", L"未改：SDK 原樣"),
                      below ? on_colour : off_colour);
                 for (int col = 0; col < 2; ++col) {
@@ -246,8 +221,8 @@ struct Compare {
                               col == 0 ? (below ? &trail_steadied : &trail_raw) : nullptr);
                 }
             }
-            text(dc, 20, height - 26, say(L"White tracked, yellow inferred (guessed), blue moved by the new steadying. Close the window to stop.",
-                                          L"白：追蹤中　黃：SDK 推測（被擋住）　藍：被新技術固定或修正的點。關閉視窗即結束。"), dim);
+            text(dc, 20, height - 26, say(L"White tracked, yellow inferred (guessed), blue moved by the steadying. Close the window to stop.",
+                                          L"白：追蹤中　黃：SDK 推測（被擋住）　藍：被游標穩定移動的點。關閉視窗即結束。"), dim);
         }
         BitBlt(target, 0, 0, width, height, dc, 0, 0, SRCCOPY);
         SelectObject(dc, old_font);
@@ -272,9 +247,7 @@ LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_KEYDOWN:
         if (wp == 'M') { self->menu = !self->menu; self->trail_raw.clear(); self->trail_steadied.clear(); }
-        else if (wp == '1') { self->stabilize = !self->stabilize; self->rebuild(); }
-        else if (wp == '2') { self->depth_layer = !self->depth_layer; self->rebuild(); }
-        else if (wp == '3') { self->steady_menu = !self->steady_menu; self->rebuild(); }
+        else if (wp == '1') { self->steady_menu = !self->steady_menu; self->rebuild(); }
         return 0;
     case WM_ERASEBKGND: return 1;
     case WM_PAINT: {
@@ -304,7 +277,7 @@ int main() {
     cls.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
     RegisterClassW(&cls);
     HWND window = CreateWindowExW(0, cls.lpszClassName,
-                                  compare.chinese ? L"Free Riders - Kinect 新技術比較" : L"Free Riders - Kinect steadying compared",
+                                  compare.chinese ? L"Free Riders - Kinect 游標穩定比較" : L"Free Riders - Kinect steadying compared",
                                   WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1280, 1040, nullptr, nullptr, instance, &compare);
     if (!window) return 1;
     SetTimer(window, 1, 15, nullptr);
