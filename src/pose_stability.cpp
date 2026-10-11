@@ -1,5 +1,6 @@
 #include "pose_stability.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
@@ -159,6 +160,18 @@ bool menu_steadying() {
     return on != 0;
 }
 
+float menu_steady_radius() {
+    static const float radius = [] {
+        const char* const text = std::getenv("SFR_MENU_STEADY_RADIUS");
+        if (!text || !*text) return MenuHandSteadying::default_rest_radius;
+        char* end = nullptr;
+        const double millimetres = std::strtod(text, &end);
+        if (end == text || !std::isfinite(millimetres) || millimetres < 1) return MenuHandSteadying::default_rest_radius;
+        return (std::min)(float(millimetres / 1000), MenuHandSteadying::max_rest_radius);
+    }();
+    return radius;
+}
+
 MenuHandSteadying MenuHandSteadying::from_environment() { return MenuHandSteadying(true); }
 
 void MenuHandSteadying::forget() { hands_ = {}; }
@@ -170,6 +183,8 @@ void MenuHandSteadying::steady(SkeletonJoints& joints, bool in_menu) {
         return;
     }
     namespace joint = nui_joint;
+    const float rest_radius = menu_steady_radius();
+    const float follow = (std::max)(follow_radius, 2 * rest_radius);
     const auto& shoulders = joints[joint::shoulder_center];
     const std::array<std::array<uint32_t, 2>, 2> pairs{{{joint::hand_left, joint::wrist_left},
                                                         {joint::hand_right, joint::wrist_right}}};
@@ -193,7 +208,7 @@ void MenuHandSteadying::steady(SkeletonJoints& joints, bool in_menu) {
             hand.last = now;
             const float dx = now[0] - hand.rest[0], dy = now[1] - hand.rest[1];
             const float away = std::hypot(dx, dy);
-            if (away > follow_radius) hand.rest = now;
+            if (away > follow) hand.rest = now;
             else if (away > rest_radius) {
                 const float pulled = 1.0f - rest_radius / away;
                 hand.rest = {hand.rest[0] + dx * pulled, hand.rest[1] + dy * pulled};

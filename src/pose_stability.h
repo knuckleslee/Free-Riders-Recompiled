@@ -114,8 +114,12 @@ public:
     void steady(SkeletonJoints& joints, bool in_menu);
     void forget();
 
-    static constexpr float rest_radius = 0.008f;  // metres: about 20 cursor pixels
-    static constexpr float follow_radius = 0.03f; // a step this big is followed exactly
+    // The circle's radius is the player's (menu_steady_radius below); a step
+    // beyond follow_radius, or twice the circle if that is wider, is
+    // followed exactly.
+    static constexpr float default_rest_radius = 0.008f;  // metres: about 20 cursor pixels
+    static constexpr float max_rest_radius = 0.03f;
+    static constexpr float follow_radius = 0.03f;
     static constexpr float max_jump = 0.25f;      // metres in one picture
     static constexpr uint32_t max_ignored_in_a_row = 1;
 
@@ -130,9 +134,14 @@ private:
 };
 
 // The player's switch for the menu steadying, for every MenuHandSteadying at
-// once (webcam and Kinect): on unless SFR_MENU_HAND_STEADY=0 started it
-// off, and flipped while playing (F8, menu_steady_hotkey.h) to compare.
+// once (webcam and Kinect): on unless SFR_MENU_HAND_STEADY=0 (the
+// launcher's circle set to 0) started it off, and flipped while playing
+// (F8, menu_steady_hotkey.h) to compare.
 void set_menu_steadying(bool on);
 bool menu_steadying();
+
+// The circle a still hand stays in, in metres: SFR_MENU_STEADY_RADIUS in
+// millimetres (1 to 30, the launcher's setting), else the default.
+float menu_steady_radius();
 
 }

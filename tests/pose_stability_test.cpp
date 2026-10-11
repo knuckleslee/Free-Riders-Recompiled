@@ -193,7 +193,7 @@ void a_moving_hand_moves_the_cursor_at_once() {
     // A slow movement: 2 cm a picture is dragged, no more than the rest circle behind.
     joints = skeleton(0.32f, 0.5f);
     steadying.steady(joints, true);
-    require(near(joints[sfr::nui_joint::hand_right][0], 0.32f - sfr::MenuHandSteadying::rest_radius, 1e-5f),
+    require(near(joints[sfr::nui_joint::hand_right][0], 0.32f - sfr::MenuHandSteadying::default_rest_radius, 1e-5f),
             "a slow movement starts at once, a little behind");
     require(near(joints[sfr::nui_joint::wrist_right][0], joints[sfr::nui_joint::hand_right][0], 1e-5f),
             "the wrist moves with the hand");

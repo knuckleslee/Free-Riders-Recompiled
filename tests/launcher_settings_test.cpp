@@ -150,6 +150,24 @@ void rendering_resolution_settings() {
             "unsupported in-memory settings serialize and launch at native resolution");
 }
 
+void menu_steady_settings() {
+    const sfr::LauncherSettings defaults;
+    require(sfr::format_launcher_settings(defaults).find("menu_steady_radius=8\n") != std::string::npos,
+            "the menu cursor steadying defaults to an 8 mm circle");
+    require(value_of(defaults, "SFR_MENU_HAND_STEADY") == "1" && value_of(defaults, "SFR_MENU_STEADY_RADIUS") == "8",
+            "the default circle reaches the game");
+    const auto wide = sfr::parse_launcher_settings("menu_steady_radius=15\n");
+    require(wide.menu_steady_radius == 15 && value_of(wide, "SFR_MENU_STEADY_RADIUS") == "15" &&
+                sfr::format_launcher_settings(wide).find("menu_steady_radius=15\n") != std::string::npos,
+            "a chosen circle survives a save and reaches the game");
+    const auto off = sfr::parse_launcher_settings("menu_steady_radius=0\n");
+    require(value_of(off, "SFR_MENU_HAND_STEADY") == "0" && value_of(off, "SFR_MENU_STEADY_RADIUS").empty(),
+            "0 starts the steadying off");
+    for (const char* bad : {"31", "-1", "big"})
+        require(sfr::parse_launcher_settings(std::string("menu_steady_radius=") + bad + "\n").menu_steady_radius == 8,
+                "an out-of-range circle keeps the default");
+}
+
 void camera_debug_settings() {
     const sfr::LauncherSettings defaults;
     require(sfr::format_launcher_settings(defaults).find("camera_debug=0\n") != std::string::npos,
@@ -370,6 +388,7 @@ int main() {
         graphics_backend_settings();
         rendering_resolution_settings();
         camera_debug_settings();
+        menu_steady_settings();
         avatar_model_settings();
         malformed_values_keep_defaults();
         environment_follows_settings();
