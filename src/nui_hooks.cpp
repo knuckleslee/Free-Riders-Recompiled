@@ -7,6 +7,7 @@
 #include "kinect_tuner.h"
 #include "camera_tuner.h"
 #include "kinect_stability.h"
+#include "menu_steady_hotkey.h"
 #include "native_input.h"
 #include "camera_debug.h"
 #include "camera_input.h"
@@ -492,6 +493,7 @@ void write_kinect_body(sfr::GuestMemory& memory, uint32_t frame, const sfr::Kine
 // NuiSkeletonGetNextFrame(timeout ms, frame): one emulated player.
 SFR_INPUT_HOOK(sub_827707B0) {
     sfr::enter_function(ctx,"sub_827707B0",0x827707B0);
+    sfr::poll_menu_steady_hotkey();  // F8: the menu steadying on or off
     const uint32_t frame=ctx.r4.u32;
     if(!frame) { ctx.r3.u64=0x80004003u; return; }  // E_POINTER, as the original
     // [83E52F8C] is the race flag: the hands leave the menu cursor pose.

@@ -233,7 +233,7 @@ mingw 編譯連結過。Kinect for Xbox 360（v1）已在實機上讀到骨架�
 骨架照原樣交給遊戲，只有選單游標和主機不同（[`kinect_stability.h`](../src/kinect_stability.h)，和 webcam 共用
 [`pose_stability.h`](../src/pose_stability.h) 的 `MenuHandSteadying`；尚未實機確認效果）：選單中（不在比賽時）雙手以肩膀為準，
 靜止時小幅晃動不移動游標，慢慢移動立刻跟上，快速移動完全不延遲，單一格的突跳忽略。比賽中不作用。每個被追蹤的人各自記憶，
-依 SDK 追蹤編號區分。`SFR_MENU_HAND_STEADY=0` 關閉（和 webcam 共用）。
+依 SDK 追蹤編號區分。`SFR_MENU_HAND_STEADY=0` 讓它一開始是關的；遊戲中在遊戲視窗按 **F8** 隨時開關（webcam 和 Kinect 一起），目前狀態顯示在遊戲視窗的標題列（`[游標穩定：開（F8 切換）]`），log 是 `NUI_MENU_STEADY on=1/0`。
 
 用實體 Kinect 比較：`sfr_kinect_compare`（Windows，先關遊戲，Kinect 一次只給一個程式）開一個四格視窗，上排是 SDK 原樣、
 下排是游標穩定處理後，左邊彩色、右邊深度。M 切換比賽／選單（預設選單，畫出右手的游標軌跡），1 開關下排的游標穩定。

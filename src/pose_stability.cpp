@@ -1,5 +1,6 @@
 #include "pose_stability.h"
 
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 
@@ -140,16 +141,31 @@ void PoseStabilizer::stabilize(PoseLandmarks& landmarks, double interval) {
     }
 }
 
-MenuHandSteadying MenuHandSteadying::from_environment() {
-    const char* const text = std::getenv("SFR_MENU_HAND_STEADY");
-    return MenuHandSteadying(!(text && *text == '0'));
+namespace {
+std::atomic<int> menu_switch{-1};  // -1: not yet read from the environment
 }
+
+void set_menu_steadying(bool on) { menu_switch.store(on ? 1 : 0, std::memory_order_relaxed); }
+
+bool menu_steadying() {
+    int on = menu_switch.load(std::memory_order_relaxed);
+    if (on < 0) {
+        const char* const text = std::getenv("SFR_MENU_HAND_STEADY");
+        int fresh = !(text && *text == '0');
+        // A flip that came first wins over the environment.
+        menu_switch.compare_exchange_strong(on, fresh, std::memory_order_relaxed);
+        on = menu_switch.load(std::memory_order_relaxed);
+    }
+    return on != 0;
+}
+
+MenuHandSteadying MenuHandSteadying::from_environment() { return MenuHandSteadying(true); }
 
 void MenuHandSteadying::forget() { hands_ = {}; }
 
 void MenuHandSteadying::steady(SkeletonJoints& joints, bool in_menu) {
     if (!enabled_) return;
-    if (!in_menu) {
+    if (!in_menu || !menu_steadying()) {
         forget();
         return;
     }

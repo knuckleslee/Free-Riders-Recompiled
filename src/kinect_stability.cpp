@@ -1,12 +1,10 @@
 #include "kinect_stability.h"
 
-#include <cstdlib>
-
 namespace sfr {
 
 KinectBodySteadying KinectBodySteadying::from_environment() {
-    const char* const text = std::getenv("SFR_MENU_HAND_STEADY");
-    return KinectBodySteadying(!(text && *text == '0'));
+    // The player's switch (menu_steadying) decides; it reads the environment.
+    return KinectBodySteadying(true);
 }
 
 KinectBodySteadying::Body& KinectBodySteadying::body_for(uint32_t tracking_id) {

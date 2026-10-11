@@ -105,7 +105,7 @@ private:
 // measured, so pushing towards a button is not held back.
 class MenuHandSteadying {
 public:
-    // SFR_MENU_HAND_STEADY=0 turns it off.
+    // Steadies unless the player's switch is off (menu_steadying below).
     static MenuHandSteadying from_environment();
     explicit MenuHandSteadying(bool enabled = true) : enabled_(enabled) {}
 
@@ -128,5 +128,11 @@ private:
     bool enabled_;
     std::array<Hand, 2> hands_{};
 };
+
+// The player's switch for the menu steadying, for every MenuHandSteadying at
+// once (webcam and Kinect): on unless SFR_MENU_HAND_STEADY=0 started it
+// off, and flipped while playing (F8, menu_steady_hotkey.h) to compare.
+void set_menu_steadying(bool on);
+bool menu_steadying();
 
 }

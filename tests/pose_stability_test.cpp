@@ -215,6 +215,22 @@ void one_wrong_picture_does_not_throw_the_cursor() {
     require(near(joints[sfr::nui_joint::hand_right][0], -0.4f, 1e-5f), "the next picture agreeing is followed");
 }
 
+void the_players_switch_turns_it_off_and_on() {
+    sfr::MenuHandSteadying steadying;
+    auto joints = skeleton(0.3f, 0.5f);
+    steadying.steady(joints, true);
+    sfr::set_menu_steadying(false);
+    joints = skeleton(0.303f, 0.5f);
+    steadying.steady(joints, true);
+    require(joints[sfr::nui_joint::hand_right][0] == 0.303f, "switched off, the hands are left as measured");
+    sfr::set_menu_steadying(true);
+    joints = skeleton(0.303f, 0.5f);
+    steadying.steady(joints, true);
+    joints = skeleton(0.306f, 0.5f);
+    steadying.steady(joints, true);
+    require(near(joints[sfr::nui_joint::hand_right][0], 0.303f, 1e-5f), "switched on again, a still hand holds the cursor");
+}
+
 void racing_hands_pass_through() {
     sfr::MenuHandSteadying steadying;
     auto joints = skeleton(0.3f, 0.5f);
@@ -238,6 +254,7 @@ int main() {
         a_moving_hand_moves_the_cursor_at_once();
         one_wrong_picture_does_not_throw_the_cursor();
         racing_hands_pass_through();
+        the_players_switch_turns_it_off_and_on();
     } catch (const std::exception& error) {
         std::cerr << "pose_stability_test: " << error.what() << '\n';
         return 1;
