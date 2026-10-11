@@ -93,7 +93,7 @@ launcher 只有在「體感」與 Debug 開關都開啟時才會傳入 `SFR_CAME
 
 ## Webcam 調整視窗（Windows）
 
-用 webcam 時，遊戲選單裡調整 Kinect 的選項會打開「Webcam 調整」視窗
+用 webcam 時，遊戲選單裡調整 Kinect 的選項會打開「Webcam 調整」視窗（比賽中的 Xbox 選單仍照舊打開就關閉）
 （[`camera_tuner.h`](../src/camera_tuner.h)，對應 Kinect 的調整視窗）。它借用遊戲已開的攝影機，顯示攝影機畫面
 （以鏡子的方向）和偵測到的骨架，並逐項打勾：攝影機、畫面、人體偵測、全身入鏡（肩膀到腳踝都看得到，
 且離畫面邊緣一段距離）。卡在哪一步就提示怎麼做：關閉其他用攝影機的程式、調整光線、往後站或把攝影機

@@ -1743,8 +1743,11 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
         ctx.r3.u64 = 0;
         return;
     }
-    if ((address == 0x82ACBE5C && std::string_view(name) == "__imp__XamShowNuiTroubleshooterUI") ||
-        std::string_view(name) == "__imp__XamShowNuiGuideUI") {
+    // In a race ([83E52F8C], the title's race flag) the Kinect Guide the
+    // pause menu opens stays as it was: shown and closed at once, no window.
+    if (((address == 0x82ACBE5C && std::string_view(name) == "__imp__XamShowNuiTroubleshooterUI") ||
+         std::string_view(name) == "__imp__XamShowNuiGuideUI") &&
+        !(active_memory && active_memory->readable(0x83E52F8C, 4) && active_memory->load<uint32_t>(0x83E52F8C) != 0)) {
         // The menu's Kinect adjustment: with a real Kinect, the preview
         // window over the game's sensor stands in for the system's Kinect
         // troubleshooter or Kinect Guide, with the webcam the webcam's
