@@ -129,7 +129,7 @@ COM 介面依 SDK 2.0 的 `Kinect.h` 宣告到用得到的最後一個方法為�
   看遊戲是否自己暫停：log 依序是 `NUI_PAUSE_GESTURE guide`、`NUI_SYSTEM_GUIDE open by=PauseGesture racing=1`，
   遊戲若進了暫停選單會出現 `NUI_RING_ACTIVE racing=1`，關閉視窗時 `NUI_SYSTEM_GUIDE closed`。
   `SFR_GUIDE_GESTURE=0` 回到下面原本的做法（只在比賽中、直接暫停、沒有 overlay）。暫停選單裡的 Xbox／Kinect
-  選項不受影響，比賽中仍是一打開就關閉。
+  選項同樣打開調整視窗。
 - **Pause Gesture／暫停手勢**：Xbox 360 Kinect 的系統暫停手勢（universal pause）：右手垂在身側、
   左手伸直往身體外側斜下約 45 度舉著。主機上這是系統的功能，不是遊戲的：舉著時左下角出現進度圖示，
   然後叫出遊戲的暫停選單。這裡由 [`pause_gesture.h`](../src/pause_gesture.h) 判斷姿勢，舉滿
@@ -266,7 +266,7 @@ mingw 編譯連結過。Kinect for Xbox 360（v1）已在實機上讀到骨架�
 
 遊戲中也開得到同一個視窗（[`kinect_tuner.h`](../src/kinect_tuner.h)）：選單裡調整 Kinect 的選項會向系統要
 Kinect 疑難排解（`XamShowNuiTroubleshooterUI`）或 Kinect Guide（`XamShowNuiGuideUI`，結算畫面的 Guide 按鈕），
-原本這裡沒有系統畫面、打開就關閉；現在用實體 Kinect 時改成打開「Kinect 調整」視窗。比賽中（例如暫停選單裡的 Xbox 選單）仍照舊打開就關閉，不開調整視窗（Kinect 與 webcam 都一樣）。它借用遊戲已開的感應器
+原本這裡沒有系統畫面、打開就關閉；現在用實體 Kinect 時改成打開「Kinect 調整」視窗，比賽中也一樣（暫停選單裡的 Xbox 選單、玩家離開畫面時的暫停）。它借用遊戲已開的感應器
 （不另外開、不關閉），骨架由遊戲讀到後轉交給它（不會搶走遊戲的骨架），彩色與深度影像照常顯示，角度一樣用按鈕或
 ↑↓ 調整；視窗開在遊戲視窗正中央，按 Esc、手把的 Back（Select）或關閉鈕就回到遊戲，保持在最上層，語言跟系統；webcam 調整視窗也一樣。開著時通知遊戲系統畫面開啟（XN_SYS_UI 1），關閉視窗才通知關閉（0）。
 實測遊戲在系統畫面開著時不會自己停住，玩家還能繞過視窗操作遊戲，離開選單後遊戲就不正常了；所以視窗開著時

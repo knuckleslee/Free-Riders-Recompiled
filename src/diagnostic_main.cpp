@@ -1783,19 +1783,10 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
         ctx.r3.u64 = 0;
         return;
     }
-    // In a race ([83E52F8C], the title's race flag) the Kinect Guide the
-    // pause menu opens stays as it was: shown and closed at once, no window.
+    // The Kinect troubleshooter or Kinect Guide, wherever the title asks
+    // for it (menus, the pause menu, the pause when the player is lost).
     if (((address == 0x82ACBE5C && std::string_view(name) == "__imp__XamShowNuiTroubleshooterUI") ||
-         std::string_view(name) == "__imp__XamShowNuiGuideUI") &&
-        active_memory && active_memory->readable(0x83E52F8C, 4) && active_memory->load<uint32_t>(0x83E52F8C) != 0) {
-        static uint32_t told = 0;
-        if (told++ < 32)
-            std::cerr << "NUI_KINECT_TUNER skipped by=" << std::string_view(name).substr(7) << " reason=racing race_flag=0x"
-                      << std::hex << active_memory->load<uint32_t>(0x83E52F8C) << " lr=0x" << ctx.lr << std::dec << '\n';
-    }
-    if (((address == 0x82ACBE5C && std::string_view(name) == "__imp__XamShowNuiTroubleshooterUI") ||
-         std::string_view(name) == "__imp__XamShowNuiGuideUI") &&
-        !(active_memory && active_memory->readable(0x83E52F8C, 4) && active_memory->load<uint32_t>(0x83E52F8C) != 0)) {
+         std::string_view(name) == "__imp__XamShowNuiGuideUI")) {
         // The menu's Kinect adjustment: with a real Kinect, the preview
         // window over the game's sensor stands in for the system's Kinect
         // troubleshooter or Kinect Guide, with the webcam the webcam's
