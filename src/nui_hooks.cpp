@@ -242,7 +242,7 @@ bool dialog_seen=false;
 // gesture there would be START answering it.
 bool pause_gesture_active(bool racing) {
     const auto recent=[](uint64_t frame) { return frame && input_frames-frame<=30; };
-    return racing && !kinect_tuner_open() && now_ms()-ring_asked_ms.load(std::memory_order_relaxed)>500 &&
+    return racing && !sfr::kinect_tuner_open() && now_ms()-ring_asked_ms.load(std::memory_order_relaxed)>500 &&
            !recent(menu_page_frame) && !recent(menu_manager_frame) && !(dialog_seen && recent(dialog_frame));
 }
 }
@@ -520,7 +520,7 @@ SFR_INPUT_HOOK(sub_827707B0) {
         // While the adjustment window is open the game is given one frame
         // with every arm hanging down, then nothing new: no cursor, no
         // gesture, nobody leaving. The window sees the sensor throughout.
-        const bool tuning=kinect_tuner_open();
+        const bool tuning=sfr::kinect_tuner_open();
         static bool arms_given=false;
         static sfr::KinectFrame tuner_frame;
         if(!tuning) {
@@ -676,7 +676,7 @@ SFR_INPUT_HOOK(sub_827707B0) {
     // down once, then the pose kept (the camera's freshness still read, so
     // the camera stays the player's source).
     static bool camera_arms_given=false;
-    const bool camera_tuning=camera_player && kinect_tuner_open();
+    const bool camera_tuning=camera_player && sfr::kinect_tuner_open();
     if(camera_tuning) {
         sfr::SkeletonJoints ignored{};
         camera_player->joints(ignored,&camera_status);
