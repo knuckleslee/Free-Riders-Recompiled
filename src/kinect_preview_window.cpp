@@ -403,6 +403,7 @@ struct KinectPreviewWindow::Impl {
         place_buttons(window);
         if (borrowed) sfr::center_over_game(window);  // over the game it adjusts
         ShowWindow(window, SW_SHOW);
+        if (borrowed) sfr::bring_to_front(window);  // in front of the game, with the keyboard
         // The sensor opens once the window shows, so the window says so
         // meanwhile; a second or so for a Kinect v1.
         std::jthread opener([this](std::stop_token) {
@@ -476,6 +477,9 @@ bool KinectPreviewWindow::closed() const { return impl_->is_closed.load(); }
 void KinectPreviewWindow::close() {
     if (const HWND window = impl_->shown.load(); window && !closed()) PostMessageW(window, WM_CLOSE, 0, 0);
 }
+void KinectPreviewWindow::raise() {
+    if (const HWND window = impl_->shown.load(); window && !closed()) sfr::bring_to_front(window);
+}
 
 std::shared_ptr<KinectSensor> KinectPreviewWindow::sensor() const {
     std::lock_guard guard(impl_->lock);
@@ -497,6 +501,7 @@ std::unique_ptr<KinectPreviewWindow> KinectPreviewWindow::open_over(KinectSensor
 void KinectPreviewWindow::show_frame(const KinectFrame&) {}
 bool KinectPreviewWindow::closed() const { return true; }
 void KinectPreviewWindow::close() {}
+void KinectPreviewWindow::raise() {}
 std::shared_ptr<KinectSensor> KinectPreviewWindow::sensor() const { return nullptr; }
 std::string KinectPreviewWindow::failure() const { return {}; }
 }

@@ -29,6 +29,8 @@ public:
     bool closed() const;
     // Closes it as its close box does (the game's window in front again).
     void close();
+    // Brings it in front again (asked for while already open).
+    void raise();
     // The open sensor, or null while it is opening or when there is none.
     std::shared_ptr<KinectSensor> sensor() const;
     // Why no sensor opened (KinectSensor::open's reason, "no-runtime",

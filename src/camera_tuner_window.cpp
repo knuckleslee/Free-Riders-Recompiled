@@ -381,6 +381,7 @@ struct CameraTunerWindow::Impl {
             place_controls(window);
             sfr::center_over_game(window);  // over the game it adjusts
             ShowWindow(window, SW_SHOW);
+            sfr::bring_to_front(window);  // in front of the game, with the keyboard
             MSG message;
             while (!stop.stop_requested() && GetMessageW(&message, nullptr, 0, 0) > 0) {
                 // Esc closes it from anywhere in it, a slider or button included.
@@ -421,6 +422,9 @@ bool CameraTunerWindow::closed() const { return impl_->is_closed.load(); }
 void CameraTunerWindow::close() {
     if (const HWND window = impl_->shown.load(); window && !closed()) PostMessageW(window, WM_CLOSE, 0, 0);
 }
+void CameraTunerWindow::raise() {
+    if (const HWND window = impl_->shown.load(); window && !closed()) sfr::bring_to_front(window);
+}
 }
 #else
 namespace sfr {
@@ -430,5 +434,6 @@ CameraTunerWindow::~CameraTunerWindow() = default;
 std::unique_ptr<CameraTunerWindow> CameraTunerWindow::open_over(CameraPlayer&) { return nullptr; }
 bool CameraTunerWindow::closed() const { return true; }
 void CameraTunerWindow::close() {}
+void CameraTunerWindow::raise() {}
 }
 #endif

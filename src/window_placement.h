@@ -36,5 +36,23 @@ inline void center_over_game(HWND window) {
     y = (std::max)(top, (std::min)(y, top + GetSystemMetrics(SM_CYVIRTUALSCREEN) - height));
     SetWindowPos(window, nullptr, x, y, 0, 0, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
 }
+
+// Puts a window in front with the keyboard, also when another program's
+// window (or the game's, from another thread) is in front: Windows only lets
+// the thread that has the foreground hand it over, so this thread joins that
+// one's input for the moment it takes.
+inline void bring_to_front(HWND window) {
+    if (!window || !IsWindow(window)) return;
+    const HWND front = GetForegroundWindow();
+    const DWORD own = GetCurrentThreadId();
+    const DWORD theirs = front ? GetWindowThreadProcessId(front, nullptr) : 0;
+    const bool joined = theirs && theirs != own && AttachThreadInput(theirs, own, TRUE);
+    if (IsIconic(window)) ShowWindow(window, SW_RESTORE);
+    SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    BringWindowToTop(window);
+    SetForegroundWindow(window);
+    SetFocus(window);
+    if (joined) AttachThreadInput(theirs, own, FALSE);
+}
 }
 #endif

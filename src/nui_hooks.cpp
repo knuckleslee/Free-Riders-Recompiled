@@ -158,7 +158,13 @@ void start_kinect() {
 namespace sfr {
 KinectTuner open_kinect_tuner() {
     std::lock_guard guard(tuner_lock);
-    if((tuner && !tuner->closed()) || (camera_tuner && !camera_tuner->closed())) return KinectTuner::already_open;
+    if((tuner && !tuner->closed()) || (camera_tuner && !camera_tuner->closed())) {
+        // Asked for again while open (perhaps behind another window): in
+        // front again rather than nothing.
+        if(tuner && !tuner->closed()) tuner->raise();
+        if(camera_tuner && !camera_tuner->closed()) camera_tuner->raise();
+        return KinectTuner::already_open;
+    }
     bool opened=false;
     if(kinect) {
         tuner.reset();  // a closed one: its thread has ended
