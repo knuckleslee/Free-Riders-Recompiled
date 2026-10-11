@@ -34,7 +34,7 @@ KinectBodySteadying KinectBodySteadying::from_environment() {
 KinectBodySteadying::Body& KinectBodySteadying::body_for(uint32_t tracking_id) {
     for (Body& body : bodies_)
         if (body.tracking_id == tracking_id) return body;
-    bodies_.push_back(Body{tracking_id, PoseStabilizer(stabilize_), MenuHandSteadying(steady_menu_), 0});
+    bodies_.push_back(Body{tracking_id, PoseStabilizer(stabilize_, follow_speed), MenuHandSteadying(steady_menu_), 0});
     return bodies_.back();
 }
 

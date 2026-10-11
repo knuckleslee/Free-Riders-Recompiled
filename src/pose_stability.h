@@ -33,7 +33,14 @@ class PoseStabilizer {
 public:
     // SFR_POSE_STABILIZE=0 turns it off.
     static PoseStabilizer from_environment();
-    explicit PoseStabilizer(bool enabled = true) : enabled_(enabled) {}
+    // follow_speed (metres or shoulder widths a second), when set: a point
+    // still not believed after its hold is not handed straight to the model
+    // but follows the model's guesses at no more than that speed, a single
+    // picture's jump ignored as before. A sensor that marks a hidden joint
+    // and keeps guessing it for seconds (the Kinect, an arm across the body
+    // all race long) needs this; a camera model's guess that runs on means
+    // the limb really is somewhere else, and is followed at once (0).
+    explicit PoseStabilizer(bool enabled = true, float follow_speed = 0) : enabled_(enabled), follow_speed_(follow_speed) {}
 
     // Checks and holds in place. The interval is the time since the picture
     // before; a first picture, or one after a gap, starts again.
@@ -82,6 +89,7 @@ private:
         {pose_point::ankle_left, pose_point::knee_left}, {pose_point::ankle_right, pose_point::knee_right},
     }};
     bool enabled_;
+    float follow_speed_;
     std::array<Memory, limbs_.size()> memory_{};
     uint32_t held_ = 0;
 };

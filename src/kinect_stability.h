@@ -16,7 +16,9 @@ namespace sfr {
 // or swaps sides. So each body's limb points go through the same
 // PoseStabilizer, with the sensor's own tracking state as the confidence
 // (tracked is believed, inferred or not tracked is not), and a held wrist or
-// ankle carries its hand or foot with it. In the menus the hands then go
+// ankle carries its hand or foot with it. A joint inferred for longer than
+// the hold then follows the sensor's guesses slowly, one frame's jump
+// ignored, instead of taking them as they come. In the menus the hands then go
 // through MenuHandSteadying, so the cursor settles on a button.
 //
 // Each body keeps its own memory by tracking id; a body that leaves takes it
@@ -32,6 +34,10 @@ public:
     void steady(std::vector<KinectBody>& bodies, double interval_seconds, bool in_menu);
     // Points held in the last frame, over every body, for the log.
     uint32_t held() const { return held_; }
+
+    // An arm hidden for longer than a hold (crossed all race long) is still
+    // only guessed: it follows the guesses at up to this speed, m/s.
+    static constexpr float follow_speed = 1.5f;
 
     // The confidence a tracking state stands for.
     static float score_of(uint32_t state) { return state >= 2 ? 0.9f : state == 1 ? 0.3f : 0.0f; }

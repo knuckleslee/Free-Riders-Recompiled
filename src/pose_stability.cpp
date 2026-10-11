@@ -102,6 +102,34 @@ void PoseStabilizer::stabilize(PoseLandmarks& landmarks, double interval) {
             continue;
         }
 
+        if (!believed && memory.known && follow_speed_ > 0 && (memory.given_up || memory.holding)) {
+            // Held as long as it may be, still not believed: the model's
+            // guesses are followed, slowly, from where the point is now.
+            memory.given_up = true;
+            memory.holding = false;
+            memory.offset_speed = {};
+            memory.world_speed = {};
+            const std::array<float, 2> towards{offset[0] - memory.offset[0], offset[1] - memory.offset[1]};
+            const std::array<float, 3> world_towards{world_offset[0] - memory.world_offset[0],
+                                                     world_offset[1] - memory.world_offset[1],
+                                                     world_offset[2] - memory.world_offset[2]};
+            const float away = length(towards, world_towards);
+            if (std::isfinite(away) && away > (world ? max_jump_metres : max_jump_spans) && memory.rejected < max_rejected_in_a_row) {
+                ++memory.rejected;  // one picture's jump: not followed
+            } else if (std::isfinite(away) && away > 0) {
+                memory.rejected = 0;
+                const float step = std::fmin(1.0f, float(follow_speed_ * interval) / away);
+                for (int axis = 0; axis < 2; ++axis) memory.offset[axis] += towards[axis] * step;
+                for (int axis = 0; axis < 3; ++axis) memory.world_offset[axis] += world_towards[axis] * step;
+            }
+            point.x = landmarks[limb.parent].x + memory.offset[0];
+            point.y = landmarks[limb.parent].y + memory.offset[1];
+            if (world)
+                for (int axis = 0; axis < 3; ++axis) point.world[axis] = landmarks[limb.parent].world[axis] + memory.world_offset[axis];
+            ++held_;
+            continue;
+        }
+
         // Believed, or held as long as it may be: the model's point it is.
         if (memory.known && !memory.holding) {
             for (int axis = 0; axis < 2; ++axis)

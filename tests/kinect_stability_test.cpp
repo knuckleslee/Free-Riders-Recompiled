@@ -117,6 +117,30 @@ void the_menu_cursor_settles() {
     require(worst <= 0.0045f, "a hand held on a button holds the cursor");
 }
 
+void a_wrist_hidden_for_seconds_follows_slowly() {
+    sfr::KinectBodySteadying steadying;
+    settle(steadying);
+    // Two seconds inferred, the guess swapping sides every few frames: past
+    // the hold the wrist follows the guesses, never faster than it may.
+    float last = 0.21f, worst = 0;
+    for (int i = 0; i < 60; ++i) {
+        std::vector<sfr::KinectBody> bodies{standing()};
+        auto& wrist = bodies[0].joints[joint::wrist_right];
+        wrist = {i % 5 < 2 ? -0.25f : 0.21f, i % 5 < 2 ? 0.0f : -0.03f, 2.4f};
+        bodies[0].joint_states[joint::wrist_right] = 1;
+        steadying.steady(bodies, interval, false);
+        const float x = bodies[0].joints[joint::wrist_right][0];
+        worst = std::fmax(worst, std::fabs(x - last));
+        last = x;
+    }
+    require(worst <= sfr::KinectBodySteadying::follow_speed * float(interval) + 1e-4f,
+            "a long-hidden wrist never jumps to a guess");
+    // Seen again: believed at once.
+    std::vector<sfr::KinectBody> bodies{standing()};
+    steadying.steady(bodies, interval, false);
+    require(near(bodies[0].joints[joint::wrist_right][0], 0.21f, 1e-4f), "a wrist seen again is where the sensor sees it");
+}
+
 void both_can_be_turned_off() {
     sfr::KinectBodySteadying steadying(false, false);
     settle(steadying);
@@ -134,6 +158,7 @@ int main() {
         an_inferred_wrist_is_held_and_its_hand_goes_with_it();
         a_forearm_that_grows_is_not_believed_even_tracked();
         each_body_keeps_its_own_memory();
+        a_wrist_hidden_for_seconds_follows_slowly();
         the_menu_cursor_settles();
         both_can_be_turned_off();
     } catch (const std::exception& error) {
