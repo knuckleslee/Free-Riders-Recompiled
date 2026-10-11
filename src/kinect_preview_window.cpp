@@ -10,6 +10,7 @@
 #include <windows.h>
 
 #include "camera_debug.h"
+#include "window_placement.h"
 
 #include <algorithm>
 #include <atomic>
@@ -394,6 +395,7 @@ struct KinectPreviewWindow::Impl {
         for (HWND button : {up_button, down_button})
             if (button && button_font) SendMessageW(button, WM_SETFONT, WPARAM(button_font), TRUE);
         place_buttons(window);
+        if (borrowed) sfr::center_over_game(window);  // over the game it adjusts
         ShowWindow(window, SW_SHOW);
         // The sensor opens once the window shows, so the window says so
         // meanwhile; a second or so for a Kinect v1.

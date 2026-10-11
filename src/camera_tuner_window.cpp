@@ -1,4 +1,5 @@
 #include "camera_tuner.h"
+#include "window_placement.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -372,6 +373,7 @@ struct CameraTunerWindow::Impl {
         if (window && SetTimer(window, 1, 33, nullptr)) {
             create_controls(window, instance);
             place_controls(window);
+            sfr::center_over_game(window);  // over the game it adjusts
             ShowWindow(window, SW_SHOW);
             MSG message;
             while (!stop.stop_requested() && GetMessageW(&message, nullptr, 0, 0) > 0) {
