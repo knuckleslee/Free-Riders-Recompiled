@@ -1773,17 +1773,19 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
         return;
     }
     if (address == 0x82ACB39C && std::string_view(name) == "__imp__XamShowNuiSigninUI" && native_notifications) {
-        // The Kinect sign-in panel. There are no profiles yet: like a player
-        // closing it, the system UI opens and closes (XN_SYS_UI 1, then 0)
-        // and the sign-in state is unchanged. The close waits for the title to
+        // The Kinect sign-in panel. Whoever it is asked for signs in as
+        // player 1, whose save there is (nui_sign_in_player1; with two
+        // players the second stays a guest). The system UI opens and closes
+        // (XN_SYS_UI 1, then 0), as a player signing in. The close waits for the title to
         // have drained the open: the title's pump (82233040) reads the whole
         // queue in one pass, and the gear parts page waits for the "showing"
         // state between the two, so sending both at once hangs it there.
+        sfr::nui_sign_in_player1();
         constexpr uint32_t xn_sys_ui = 0x00000009;
         native_notifications->publish(xn_sys_ui, 1);
         native_notifications->publish_when_drained(xn_sys_ui, 0);
         std::cerr << "NUI_SIGNIN_UI panes=0x" << std::hex << ctx.r3.u32 << " flags=0x" << ctx.r4.u32 << " lr=0x"
-                  << ctx.lr << std::dec << " result=0 backend=no-profiles\n";
+                  << ctx.lr << std::dec << " result=0 backend=player1\n";
         ctx.r3.u64 = 0;
         return;
     }

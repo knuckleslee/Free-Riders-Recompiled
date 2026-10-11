@@ -264,6 +264,20 @@ bool pause_gesture_active(bool racing) {
 }
 
 
+// The title asks someone it took for a guest to sign in (XamShowNuiSigninUI).
+// There is one profile and one save, player 1's: playing alone, everyone
+// the sensor has identified becomes that profile, so whoever the title
+// chose reads and writes player 1's save. With two players ([83E515FB]) the
+// second stays a guest.
+void sfr::nui_sign_in_player1() {
+    if(!sfr::profile_for(0) || !sfr::active_memory || sfr::active_memory->load<uint8_t>(0x83E515FB)) return;
+    std::lock_guard guard(kinect_identity_lock);
+    uint32_t signed_in=0;
+    for(auto& [tracking_id,enrollment] : kinect_identities)
+        if(enrollment!=0) { enrollment=0; ++signed_in; }
+    std::cerr << "NUI_SIGNIN_PLAYER1 signed_in=" << signed_in << '\n';
+}
+
 bool sfr::nui_body_from_sensor() { return sensor_body.load(std::memory_order_relaxed); }
 bool sfr::nui_sensor_has_depth() { return sensor_depth.load(std::memory_order_relaxed); }
 uint64_t sfr::kinect_frame_generation() { return kinect_generation.load(std::memory_order_relaxed); }
@@ -885,24 +899,18 @@ SFR_INPUT_HOOK(sub_82764620) {
     for(uint32_t offset=0;offset<32;offset+=4) memory.store<uint32_t>(uint64_t(message)+offset,0);
     memory.store<uint32_t>(message,1);                         // identity operation complete
     memory.store<uint32_t>(uint64_t(message)+4,tracking_id);
-    // One player is the signed-in profile; a second one joins as an
-    // unenrolled guest, as a friend standing beside the sensor would.
+    // Only the first player is the signed-in profile; a second one joins as
+    // an unenrolled guest, as a friend standing beside the sensor would.
     bool profile=false;
     if(kinect) {
-        // The sensor's own ids. Playing alone ([83E515FB] clear: no
-        // two-player menus) everyone the title identifies is player 1's
-        // profile: the title identifies every new skeleton, the player's own
-        // again after a moment out of view as well as a passer-by or a chair,
-        // and taking the profile from the one it already chose made that
-        // player a guest it asked to sign in, with no save. With two
-        // players the profile stays with whoever holds it while tracked, and
-        // the other is the guest.
+        // The sensor's own ids: the signed-in profile is whoever is identified
+        // while nobody tracked holds it; everyone else is a guest (until the
+        // title asks a guest to sign in: nui_sign_in_player1).
         std::lock_guard guard(kinect_identity_lock);
-        const bool two_players=memory.load<uint8_t>(0x83E515FB)!=0;
-        const bool held=std::any_of(kinect_identities.begin(),kinect_identities.end(),[&](const auto& entry) {
-            return entry.first!=tracking_id && entry.second==0;
-        });
-        profile=sfr::profile_for(0)!=nullptr && (!two_players || !held);
+        profile=sfr::profile_for(0)!=nullptr &&
+                std::none_of(kinect_identities.begin(),kinect_identities.end(),[&](const auto& entry) {
+                    return entry.first!=tracking_id && entry.second==0;
+                });
         kinect_identities[tracking_id]=profile?0u:sfr::NuiSkeletonEmulation::guest;
     } else {
         profile=tracking_id<=1 && sfr::profile_for(0)!=nullptr;
