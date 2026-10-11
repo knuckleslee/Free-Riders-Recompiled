@@ -23,22 +23,18 @@ inline HWND find_game_window() {
 }
 
 // Moves a window that is about to be shown to the middle of the game's
-// window, kept inside the monitor that middle is on (a window centred over
-// three monitors would otherwise sit across their edges). Without a game
-// window it stays where Windows put it.
+// window (kept on the desktop, should it be larger than the game's window).
+// Without a game window it stays where Windows put it.
 inline void center_over_game(HWND window) {
     const HWND game = find_game_window();
     RECT over{}, own{};
     if (!game || !window || !GetWindowRect(game, &over) || !GetWindowRect(window, &own)) return;
-    const POINT middle{(over.left + over.right) / 2, (over.top + over.bottom) / 2};
-    MONITORINFO monitor{sizeof(MONITORINFO)};
-    if (!GetMonitorInfoW(MonitorFromPoint(middle, MONITOR_DEFAULTTONEAREST), &monitor)) return;
-    const RECT area = monitor.rcWork;
-    const LONG width = (std::min)(own.right - own.left, area.right - area.left);
-    const LONG height = (std::min)(own.bottom - own.top, area.bottom - area.top);
-    const LONG x = std::clamp(middle.x - width / 2, area.left, area.right - width);
-    const LONG y = std::clamp(middle.y - height / 2, area.top, area.bottom - height);
-    SetWindowPos(window, nullptr, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+    const LONG width = own.right - own.left, height = own.bottom - own.top;
+    LONG x = (over.left + over.right) / 2 - width / 2, y = (over.top + over.bottom) / 2 - height / 2;
+    const LONG left = GetSystemMetrics(SM_XVIRTUALSCREEN), top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    x = (std::max)(left, (std::min)(x, left + GetSystemMetrics(SM_CXVIRTUALSCREEN) - width));
+    y = (std::max)(top, (std::min)(y, top + GetSystemMetrics(SM_CYVIRTUALSCREEN) - height));
+    SetWindowPos(window, nullptr, x, y, 0, 0, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
 }
 }
 #endif

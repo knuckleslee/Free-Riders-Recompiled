@@ -342,7 +342,11 @@ struct CameraTunerWindow::Impl {
             limits->ptMinTrackSize = {640, 480};
             return 0;
         }
-        case WM_CLOSE: DestroyWindow(window); return 0;
+        case WM_CLOSE:
+            // Back to the game it was opened over, which has the keyboard again.
+            if (const HWND game = sfr::find_game_window()) SetForegroundWindow(game);
+            DestroyWindow(window);
+            return 0;
         case WM_DESTROY: self->is_closed.store(true); PostQuitMessage(0); return 0;
         }
         return DefWindowProcW(window, message, wp, lp);
@@ -377,6 +381,11 @@ struct CameraTunerWindow::Impl {
             ShowWindow(window, SW_SHOW);
             MSG message;
             while (!stop.stop_requested() && GetMessageW(&message, nullptr, 0, 0) > 0) {
+                // Esc closes it from anywhere in it, a slider or button included.
+                if (message.message == WM_KEYDOWN && message.wParam == VK_ESCAPE) {
+                    PostMessageW(window, WM_CLOSE, 0, 0);
+                    continue;
+                }
                 TranslateMessage(&message);
                 DispatchMessageW(&message);
             }
