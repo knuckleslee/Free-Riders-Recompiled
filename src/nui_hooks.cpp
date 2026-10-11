@@ -885,17 +885,29 @@ SFR_INPUT_HOOK(sub_82764620) {
     for(uint32_t offset=0;offset<32;offset+=4) memory.store<uint32_t>(uint64_t(message)+offset,0);
     memory.store<uint32_t>(message,1);                         // identity operation complete
     memory.store<uint32_t>(uint64_t(message)+4,tracking_id);
-    // Only the first player is the signed-in profile; a second one joins as
-    // an unenrolled guest, as a friend standing beside the sensor would.
+    // One player is the signed-in profile; a second one joins as an
+    // unenrolled guest, as a friend standing beside the sensor would.
     bool profile=false;
     if(kinect) {
-        // The sensor's own ids: the signed-in profile is whoever is identified
-        // while nobody tracked holds it; everyone else is a guest.
+        // The sensor's own ids. Playing alone ([83E515FB] clear: no
+        // two-player menus), whoever the title identifies is joining as the
+        // player, so the signed-in profile goes to them, and anyone who held
+        // it before (someone who walked past first, a skeleton the sensor
+        // saw in a chair) becomes a guest: the player never starts as one.
+        // With two players the profile stays with whoever holds it while
+        // tracked, and the other is the guest.
         std::lock_guard guard(kinect_identity_lock);
-        profile=sfr::profile_for(0)!=nullptr &&
-                std::none_of(kinect_identities.begin(),kinect_identities.end(),[&](const auto& entry) {
-                    return entry.first!=tracking_id && entry.second==0;
-                });
+        const bool two_players=memory.load<uint8_t>(0x83E515FB)!=0;
+        const bool held=std::any_of(kinect_identities.begin(),kinect_identities.end(),[&](const auto& entry) {
+            return entry.first!=tracking_id && entry.second==0;
+        });
+        profile=sfr::profile_for(0)!=nullptr && (!two_players || !held);
+        if(profile)
+            for(auto& [other,enrollment] : kinect_identities)
+                if(other!=tracking_id && enrollment==0) {
+                    enrollment=sfr::NuiSkeletonEmulation::guest;
+                    std::cerr << "NUI_IDENTITY_PROFILE_MOVED from=" << other << " to=" << tracking_id << '\n';
+                }
         kinect_identities[tracking_id]=profile?0u:sfr::NuiSkeletonEmulation::guest;
     } else {
         profile=tracking_id<=1 && sfr::profile_for(0)!=nullptr;
