@@ -7,7 +7,7 @@ namespace sfr {
 
 PauseGesture PauseGesture::from_environment() {
     const char* const off = std::getenv("SFR_PAUSE_GESTURE");
-    double seconds = 2.0;
+    double seconds = 3.0;
     if (const char* text = std::getenv("SFR_PAUSE_GESTURE_SECONDS"); text && *text) {
         char* end = nullptr;
         const double value = std::strtod(text, &end);

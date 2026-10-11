@@ -135,8 +135,7 @@ private:
 
 // The player's switch for the menu steadying, for every MenuHandSteadying at
 // once (webcam and Kinect): on unless SFR_MENU_HAND_STEADY=0 (the
-// launcher's circle set to 0) started it off, and flipped while playing
-// (F8, menu_steady_hotkey.h) to compare.
+// launcher's circle set to 0) turns it off.
 void set_menu_steadying(bool on);
 bool menu_steadying();
 

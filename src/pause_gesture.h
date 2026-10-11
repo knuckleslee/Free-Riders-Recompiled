@@ -32,9 +32,9 @@ class PauseGesture {
 public:
     using Clock = std::chrono::steady_clock;
     // SFR_PAUSE_GESTURE=0 turns it off; SFR_PAUSE_GESTURE_SECONDS sets how
-    // long to hold (default 2: the console's own time is not known exactly).
+    // long to hold (default 3).
     static PauseGesture from_environment();
-    explicit PauseGesture(bool enabled = true, double hold_seconds = 2.0)
+    explicit PauseGesture(bool enabled = true, double hold_seconds = 3.0)
         : enabled_(enabled), hold_seconds_(hold_seconds) {}
 
     // True once, at the moment the gauge fills.

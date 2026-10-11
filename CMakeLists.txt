@@ -944,7 +944,7 @@ if(SFR_BUILD_DIAGNOSTIC)
     target_sources(sfr_cpu_diagnostic PRIVATE src/offline_presence_hooks.cpp)
     # The webcam standing in for the sensor, and the body it finds.
     target_sources(sfr_cpu_diagnostic PRIVATE src/camera_player.cpp src/camera_debug.cpp src/camera_debug_window.cpp src/pose_skeleton.cpp src/pose_smoothing.cpp src/pose_stability.cpp src/kinect_stability.cpp
-                   src/menu_steady_hotkey.cpp src/camera_tuner.cpp src/camera_tuner_window.cpp
+                   src/window_title.cpp src/camera_tuner.cpp src/camera_tuner_window.cpp
                    ${SFR_CAMERA_CAPTURE} ${SFR_POSE_SOURCES})
     # A real Kinect (SFR_CAMERA=kinect), through the Kinect for Windows runtime.
     target_sources(sfr_cpu_diagnostic PRIVATE src/kinect_sensor.cpp ${SFR_KINECT_SENSOR} ${SFR_VOICE}

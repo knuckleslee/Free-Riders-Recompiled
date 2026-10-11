@@ -12,8 +12,8 @@ namespace sfr {
 // still on a button still wanders a few millimetres between frames, so each
 // tracked body's hands go through it while a menu is up. Each body keeps its
 // own memory by tracking id; a body that leaves takes it with it.
-// SFR_MENU_HAND_STEADY=0 starts it off, and F8 flips it while playing, for
-// the webcam too (menu_steadying in pose_stability.h).
+// SFR_MENU_HAND_STEADY=0 turns it off, for the webcam too (menu_steadying
+// in pose_stability.h).
 //
 // Holding hidden limb points and checking them against the depth image were
 // tried here as well and taken out: on a real sensor they made no visible

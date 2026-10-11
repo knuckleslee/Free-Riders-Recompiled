@@ -133,7 +133,7 @@ COM 介面依 SDK 2.0 的 `Kinect.h` 宣告到用得到的最後一個方法為�
 - **Pause Gesture／暫停手勢**：Xbox 360 Kinect 的系統暫停手勢（universal pause）：右手垂在身側、
   左手伸直往身體外側斜下約 45 度舉著。主機上這是系統的功能，不是遊戲的：舉著時左下角出現進度圖示，
   然後叫出遊戲的暫停選單。這裡由 [`pause_gesture.h`](../src/pause_gesture.h) 判斷姿勢，舉滿
-  `SFR_PAUSE_GESTURE_SECONDS` 秒（預設 2；主機實際的秒數沒有查到確切數字）後，在下一次輸入更新送出
+  `SFR_PAUSE_GESTURE_SECONDS` 秒（預設 3）後，在下一次輸入更新送出
   比賽中的 START，也就是遊戲聽到的 `pauseopen`，和語音說「暫停」走同一條路。
   條件：左臂接近伸直（肩到手至少是上臂加前臂的 85%）、左手在肩膀外側下方 25 到 65 度、
   朝旁邊而不是朝感應器伸，而且右手垂在右肩下方、離正下方 30 度以內。Kinect 追蹤到的任何人都可以
@@ -241,7 +241,7 @@ mingw 編譯連結過。Kinect for Xbox 360（v1）已在實機上讀到骨架�
 骨架照原樣交給遊戲，只有選單游標和主機不同（[`kinect_stability.h`](../src/kinect_stability.h)，和 webcam 共用
 [`pose_stability.h`](../src/pose_stability.h) 的 `MenuHandSteadying`；尚未實機確認效果）：選單中（不在比賽時）雙手以肩膀為準，
 靜止時小幅晃動不移動游標，慢慢移動立刻跟上，快速移動完全不延遲，單一格的突跳忽略。比賽中不作用。每個被追蹤的人各自記憶，
-依 SDK 追蹤編號區分。靜止圈半徑在啟動器「體感」頁的「選單游標穩定」設定（1–30 公釐，預設 8，0 關閉；`SFR_MENU_STEADY_RADIUS`、`SFR_MENU_HAND_STEADY=0`）；遊戲中在遊戲視窗按 **F8** 隨時開關（webcam 和 Kinect 一起），目前狀態顯示在遊戲視窗的標題列（`[FPS 59.8 | 16.7/41.0 ms]  [Kinect 30]  [Vulkan 100%]  [游標穩定：開 F8]`，每半秒更新：FPS、平均／最長畫格時間、遊戲每秒讀到幾格新骨架、繪圖後端與渲染倍率），log 是 `NUI_MENU_STEADY on=1/0`。
+依 SDK 追蹤編號區分。靜止圈半徑在啟動器「體感」頁的「選單游標穩定」設定（1–30 公釐，預設 8，0 關閉；`SFR_MENU_STEADY_RADIUS`、`SFR_MENU_HAND_STEADY=0`）。遊戲視窗的標題列每半秒顯示 `[FPS 59.8 | 16.7/41.0 ms]  [Kinect 30]  [Vulkan 100%]`：FPS、平均／最長畫格時間、遊戲每秒讀到幾格新骨架、繪圖後端與渲染倍率；啟動器「畫面與效能」頁的「標題顯示效能數字」可以關掉（`SFR_TITLE_STATS=0`）。
 
 用實體 Kinect 比較：`sfr_kinect_compare`（Windows，先關遊戲，Kinect 一次只給一個程式）開一個四格視窗，上排是 SDK 原樣、
 下排是游標穩定處理後，左邊彩色、右邊深度。M 切換比賽／選單（預設選單，畫出右手的游標軌跡），1 開關下排的游標穩定。

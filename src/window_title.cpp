@@ -1,7 +1,6 @@
-#include "menu_steady_hotkey.h"
+#include "window_title.h"
 
 #include "native_graphics.h"
-#include "pose_stability.h"
 #include "title_stats.h"
 
 #ifdef _WIN32
@@ -36,8 +35,7 @@ namespace {
 // the game. Each change gives up after a quarter of a second.
 //
 // Every half second it says the frame rate and the frame times, the
-// graphics, and, when a body drives the game, how often it arrives and
-// whether the menu steadying is on.
+// graphics, and, when a body drives the game, how often it arrives.
 std::mutex title_lock;
 std::condition_variable title_wake;
 HWND title_window = nullptr;
@@ -67,7 +65,6 @@ std::wstring graphics_label() {
 
 void title_worker() {
     using clock = std::chrono::steady_clock;
-    const bool chinese = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE;
     const char body = body_source();
     const std::wstring graphics = graphics_label();
     std::wstring original;
@@ -118,11 +115,6 @@ void title_worker() {
                     title += part;
                 }
                 title += L"  [" + graphics + L"]";
-                if (body) {
-                    const bool on = menu_steadying();
-                    title += chinese ? (on ? L"  [游標穩定：開 F8]" : L"  [游標穩定：關 F8]")
-                                     : (on ? L"  [Steady: on F8]" : L"  [Steady: off F8]");
-                }
                 const bool set = SendMessageTimeoutW(window, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(title.c_str()),
                                                      SMTO_ABORTIFHUNG | SMTO_BLOCK, 250, &result) != 0;
                 static bool told = false;
@@ -146,40 +138,37 @@ void show(HWND window) {
 }
 
 HWND found_window = nullptr;
-bool held = false;
 HWND shown_on = nullptr;
+
+// SFR_TITLE_STATS=0 (the launcher's Performance switch) leaves the title alone.
+bool wanted() {
+    static const bool on = [] {
+        const char* const text = std::getenv("SFR_TITLE_STATS");
+        return !(text && *text == '0');
+    }();
+    return on;
+}
 }
 
-void poll_menu_steady_hotkey() {
-    // The title goes on the game's window, as the presentation made it; else
-    // the first window of ours found in front (the adjustment windows are
-    // this process's too).
+void poll_window_title() {
+    if (!wanted()) return;
+    // The game's window, as the presentation made it; else the first window
+    // of ours found in front (the adjustment windows are this process's too).
     HWND game = static_cast<HWND>(game_window());
-    HWND window = GetForegroundWindow();
-    DWORD process = 0;
-    const bool ours = window && GetWindowThreadProcessId(window, &process) && process == GetCurrentProcessId();
-    if (!game && ours && !found_window) found_window = window;
+    if (!game && !found_window) {
+        HWND window = GetForegroundWindow();
+        DWORD process = 0;
+        if (window && GetWindowThreadProcessId(window, &process) && process == GetCurrentProcessId()) found_window = window;
+    }
     if (!game) game = found_window;
     if (game && game != shown_on) {
         shown_on = game;
         show(game);
     }
-    // Only the game's own window, in front: F8 elsewhere is somebody else's.
-    if (!ours) {
-        held = false;
-        return;
-    }
-    const bool down = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
-    if (down && !held) {
-        set_menu_steadying(!menu_steadying());
-        std::cerr << "NUI_MENU_STEADY on=" << menu_steadying() << '\n';
-        if (game && IsWindow(game)) show(game);
-    }
-    held = down;
 }
 }
 #else
 namespace sfr {
-void poll_menu_steady_hotkey() {}
+void poll_window_title() {}
 }
 #endif
