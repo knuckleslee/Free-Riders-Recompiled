@@ -272,6 +272,10 @@ mingw 編譯連結過。Kinect for Xbox 360（v1）已在實機上讀到骨架�
 `depth_raised=`（推測但看得到而採用的點數）、`depth_lowered=`（追蹤中但被判錯而不採用的點數）、
 `depth_unmatched=`（軀幹對不上影像而沒檢查的人次）。
 
+用實體 Kinect 比較：`sfr_kinect_compare`（Windows，先關遊戲，Kinect 一次只給一個程式）開一個四格視窗，上排是 SDK 原樣、
+下排是新技術處理後，左邊彩色、右邊深度。白色是追蹤中、黃色是 SDK 推測、藍色是被新技術固定或修正的點。M 切換比賽／選單
+（選單時畫出右手的游標軌跡），1、2、3 分別開關下排的遮擋保持、深度分層、游標穩定；上方每秒更新固定點數與深度判定次數。
+
 左右對比的示意模擬：`sfr_kinect_steady_demo | python scripts/render_kinect_steady_demo.py out.gif`。它用同一份程式處理一段
 編出來的 Kinect 資料（雙手交叉、手放背後、快速出拳、選單中手停在按鈕上、慢慢移動），左邊關、右邊開，選單場景另畫游標軌跡。
 資料是依 SDK 推測關節常見的毛病編的，不是實際錄下的骨架。加上 `--depth`（`sfr_kinect_steady_demo --depth | python ...`）時，

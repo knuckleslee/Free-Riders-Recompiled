@@ -95,6 +95,8 @@ $targets += 'sfr_voice_commands_test'
 $targets += 'sfr_kinect_probe'
 # The webcam adjustment window without the game.
 $targets += 'sfr_camera_tuner_probe'
+# The Kinect steadying before and after, on a real sensor.
+$targets += 'sfr_kinect_compare'
 $targets += 'sfr_pose_mediapipe_test'
 $targets += 'sfr_camera_debug_test'
 $targets += 'sfr_text_wrap_test'

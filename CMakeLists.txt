@@ -489,6 +489,12 @@ add_executable(sfr_pose_mediapipe_test tests/pose_mediapipe_test.cpp src/pose_me
 target_include_directories(sfr_pose_mediapipe_test PRIVATE src)
 add_test(NAME pose_mediapipe COMMAND sfr_pose_mediapipe_test)
 if(WIN32)
+    # The Kinect skeleton before and after the steadying, four panels, on a
+    # real sensor without the game.
+    add_executable(sfr_kinect_compare tests/kinect_compare.cpp src/kinect_preview.cpp src/kinect_stability.cpp
+        src/pose_stability.cpp src/kinect_depth_layer.cpp src/camera_debug.cpp src/kinect_sensor.cpp ${SFR_KINECT_SENSOR})
+    target_include_directories(sfr_kinect_compare PRIVATE src)
+    target_link_libraries(sfr_kinect_compare PRIVATE user32 gdi32 ole32)
     # The webcam adjustment window over a real camera, without the game.
     add_executable(sfr_camera_tuner_probe tests/camera_tuner_probe.cpp src/camera_player.cpp src/camera_tuner.cpp
         src/camera_tuner_window.cpp src/pose_skeleton.cpp src/pose_smoothing.cpp src/pose_stability.cpp
