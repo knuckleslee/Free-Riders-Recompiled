@@ -298,7 +298,6 @@ static NativeWinsock* native_winsock = nullptr;
 static NativeNotifications* native_notifications = nullptr;
 static NotificationPlacement* notification_placement = nullptr;
 
-namespace sfr {
 KinectTuner show_system_guide(const char* why) {
     const KinectTuner tuner = open_kinect_tuner();
     if (tuner != KinectTuner::opened) return tuner;
@@ -319,7 +318,6 @@ KinectTuner show_system_guide(const char* why) {
         std::cerr << "NUI_KINECT_TUNER closed\nNUI_SYSTEM_GUIDE closed racing=" << (race_flag() != 0) << '\n';
     });
     return tuner;
-}
 }
 static AssetFiles* asset_files = nullptr;
 static GuestFiles* guest_files = nullptr;
