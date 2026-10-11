@@ -1774,8 +1774,7 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
     }
     if (address == 0x82ACB39C && std::string_view(name) == "__imp__XamShowNuiSigninUI" && native_notifications) {
         // The Kinect sign-in panel. Whoever it is asked for signs in as
-        // player 1, whose save there is (nui_sign_in_player1; with two
-        // players the second stays a guest). The system UI opens and closes
+        // player 1, whose save there is (nui_sign_in_player1). The system UI opens and closes
         // (XN_SYS_UI 1, then 0), as a player signing in. The close waits for the title to
         // have drained the open: the title's pump (82233040) reads the whole
         // queue in one pass, and the gear parts page waits for the "showing"

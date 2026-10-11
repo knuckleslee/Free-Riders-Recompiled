@@ -91,6 +91,11 @@ public:
         enrollment_ = enrollment;
         if (engage_ == 0) { engage_ = 1; park_ = !hand_starts_centred(); }
     }
+    // A guest signs in (the sign-in panel): the profile's enrollment from
+    // now on, nothing else changed.
+    void sign_in(uint32_t enrollment) {
+        if (enrollment_ == guest) enrollment_ = enrollment;
+    }
     // Somebody else steps in (a relay's next racer): not yet identified, the
     // hands at rest.
     void forget() {
