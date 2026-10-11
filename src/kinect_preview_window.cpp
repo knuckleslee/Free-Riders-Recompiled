@@ -384,7 +384,7 @@ struct KinectPreviewWindow::Impl {
         cls.lpszClassName = L"SfrKinectPreview";
         cls.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
         if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) { is_closed.store(true); return; }
-        HWND window = CreateWindowExW(borrowed ? WS_EX_TOPMOST : 0, cls.lpszClassName,
+        HWND window = CreateWindowExW(0, cls.lpszClassName,
                                       borrowed ? (chinese ? L"Free Riders - Kinect 調整" : L"Free Riders - Kinect adjustment")
                                                : (chinese ? L"Free Riders - Kinect 預覽" : L"Free Riders - Kinect preview"),
                                       WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1360, 640, nullptr, nullptr,

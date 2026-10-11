@@ -371,7 +371,7 @@ struct CameraTunerWindow::Impl {
         cls.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
         HWND window = nullptr;
         if (RegisterClassW(&cls) || GetLastError() == ERROR_CLASS_ALREADY_EXISTS)
-            window = CreateWindowExW(WS_EX_TOPMOST, cls.lpszClassName,
+            window = CreateWindowExW(0, cls.lpszClassName,
                                      chinese ? L"Free Riders - Webcam 調整" : L"Free Riders - Webcam adjustment",
                                      WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 900, 780, nullptr, nullptr,
                                      instance, this);

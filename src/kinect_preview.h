@@ -21,8 +21,9 @@ public:
     // The same window over the game's own sensor, for the menu's Kinect
     // adjustment (kinect_tuner.h): it neither opens nor closes the sensor and
     // never takes its skeleton frames, which the game reads; the game hands
-    // it each one with show_frame. It stays above the game's window, which
-    // may fill the screen, and speaks the system's language.
+    // it each one with show_frame. It comes to the front over the game's
+    // window when opened (and raise() brings it back), without staying on
+    // top, and speaks the system's language.
     static std::unique_ptr<KinectPreviewWindow> open_over(KinectSensor& sensor);
     void show_frame(const KinectFrame& frame);
     ~KinectPreviewWindow();

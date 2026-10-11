@@ -48,7 +48,7 @@ inline void bring_to_front(HWND window) {
     const DWORD theirs = front ? GetWindowThreadProcessId(front, nullptr) : 0;
     const bool joined = theirs && theirs != own && AttachThreadInput(theirs, own, TRUE);
     if (IsIconic(window)) ShowWindow(window, SW_RESTORE);
-    SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    SetWindowPos(window, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     BringWindowToTop(window);
     SetForegroundWindow(window);
     SetFocus(window);
