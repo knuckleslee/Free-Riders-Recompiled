@@ -122,6 +122,14 @@ COM 介面依 SDK 2.0 的 `Kinect.h` 宣告到用得到的最後一個方法為�
 - [`nui_race_hooks.cpp`](../src/nui_race_hooks.cpp)：有實體感測器時
   （`nui_body_from_sensor()`），比賽保留原生身體紀錄與「On your Gear!」身體量測。
   深度串流可用時沿用原版判定，否則套用上述骨架轉向與蹲跳補充判定。
+- **Kinect Guide 手勢（測試中）**：主機上這個姿勢其實是叫出系統的 Kinect Guide overlay，遊戲收到「系統畫面開啟」
+  （`XN_SYS_UI` 1）後在能暫停的地方自己停下來。現在預設照這個流程：在**任何地方**（選單、對話框、比賽中）舉滿
+  時間，就打開 Kinect 調整視窗（webcam 則是 webcam 調整視窗）當作 overlay，送出 `XN_SYS_UI` 1 直到視窗關閉
+  才送 0；開著時手把、鍵盤與 Kinect 輸入照樣交給視窗（主機上是 overlay 接走輸入）。比賽中**不再另外送 START**，
+  看遊戲是否自己暫停：log 依序是 `NUI_PAUSE_GESTURE guide`、`NUI_SYSTEM_GUIDE open by=PauseGesture racing=1`，
+  遊戲若進了暫停選單會出現 `NUI_RING_ACTIVE racing=1`，關閉視窗時 `NUI_SYSTEM_GUIDE closed`。
+  `SFR_GUIDE_GESTURE=0` 回到下面原本的做法（只在比賽中、直接暫停、沒有 overlay）。暫停選單裡的 Xbox／Kinect
+  選項同樣打開調整視窗。
 - **Pause Gesture／暫停手勢**：Xbox 360 Kinect 的系統暫停手勢（universal pause）：右手垂在身側、
   左手伸直往身體外側斜下約 45 度舉著。主機上這是系統的功能，不是遊戲的：舉著時左下角出現進度圖示，
   然後叫出遊戲的暫停選單。這裡由 [`pause_gesture.h`](../src/pause_gesture.h) 判斷姿勢，舉滿

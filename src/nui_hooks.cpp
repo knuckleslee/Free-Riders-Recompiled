@@ -74,10 +74,21 @@ sfr::KinectPlayerSlots kinect_players;
 // heard as the pause command by the next input update.
 sfr::PauseGesture pause_gesture=sfr::PauseGesture::from_environment();
 std::atomic<bool> pause_requested{false};
-// active: a race (or its replay) is running with no menu page or dialog
-// up. Anywhere else (the menus, the pause menu itself, story scenes,
-// results) the gesture does nothing: there, a second pause would be START
-// answering the pause menu, and the menus have nothing for it to open.
+// As on the console, the gesture is the system's Kinect Guide: held
+// anywhere (menus, dialogs, a race), it opens the adjustment window as the
+// system's overlay (show_system_guide: XN_SYS_UI 1 until it closes) and
+// leaves pausing to the title, which hears the system UI open.
+// SFR_GUIDE_GESTURE=0 goes back to the pause alone: only in a race with no
+// menu up, START ("pauseopen") and no overlay.
+bool guide_gesture() {
+    static const bool on=[] { const char* text=std::getenv("SFR_GUIDE_GESTURE"); return !(text && *text=='0'); }();
+    return on;
+}
+std::atomic<bool> guide_requested{false};
+// active (pause alone): a race (or its replay) is running with no menu page
+// or dialog up. Anywhere else (the menus, the pause menu itself, story
+// scenes, results) the gesture does nothing: there, a second pause would be
+// START answering the pause menu, and the menus have nothing for it to open.
 void watch_pause_gesture(const sfr::SkeletonJoints& joints,bool active) {
     if(!active) {
         pause_gesture.forget();
@@ -91,6 +102,12 @@ void watch_pause_gesture(const sfr::SkeletonJoints& joints,bool active) {
     const float progress=pause_gesture.progress();
     sfr::publish_pause_gauge(progress>=0.15f ? progress : 0.0f);
     if(!fired) return;
+    if(guide_gesture()) {
+        // Opened by the input update, off the skeleton read.
+        guide_requested.store(true,std::memory_order_relaxed);
+        std::cerr << "NUI_PAUSE_GESTURE guide\n";
+        return;
+    }
     pause_requested.store(true,std::memory_order_relaxed);
     std::cerr << "NUI_PAUSE_GESTURE pause\n";
 }
@@ -253,6 +270,7 @@ bool dialog_seen=false;
 // the last half second of input updates, means a menu is open: a second
 // gesture there would be START answering it.
 bool pause_gesture_active(bool racing) {
+    if(guide_gesture()) return !sfr::kinect_tuner_open();  // anywhere the overlay is not up
     const auto recent=[](uint64_t frame) { return frame && input_frames-frame<=30; };
     return racing && !sfr::kinect_tuner_open() && now_ms()-ring_asked_ms.load(std::memory_order_relaxed)>500 &&
            !recent(menu_page_frame) && !recent(menu_manager_frame) && !(dialog_seen && recent(dialog_frame));
@@ -986,6 +1004,8 @@ SFR_MENU_HOOK(sub_82494658) {
     const auto second_pad=sfr::second_player_pad();
     second_pressed=second_edges.update(second_pad ? second_pad->buttons : 0);
     ++input_frames;
+    // The Pause Gesture held as the Kinect Guide (watch_pause_gesture).
+    if(guide_requested.exchange(false,std::memory_order_relaxed)) sfr::show_system_guide("PauseGesture");
     // Relay Race: "Swap out with the next player" (the menu manager's +0x68
     // bit 0x8) waits for the racer to leave the sensor and somebody new to
     // step in. A on any controller is that swap, and the controller that
