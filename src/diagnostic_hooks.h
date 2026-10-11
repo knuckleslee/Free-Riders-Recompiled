@@ -292,10 +292,6 @@ std::optional<GamepadState> nui_second_gamepad(uint32_t user, bool racing);
 // instead of the pad or the camera's motion standing in for them
 // (nui_race_hooks.cpp).
 bool nui_body_from_sensor();
-// The sign-in panel's answer: playing alone, whoever signs in becomes
-// player 1's profile, so player 1's save is the one read; with two players
-// the second stays a guest (nui_hooks.cpp).
-void nui_sign_in_player1();
 // True only if the selected backend successfully opened its depth stream.
 bool nui_sensor_has_depth();
 // Advances with each new frame or expired tracking update (0 without one): the race
