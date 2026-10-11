@@ -265,18 +265,23 @@ bool pause_gesture_active(bool racing) {
 
 
 // The title asks someone it took for a guest to sign in (XamShowNuiSigninUI).
-// There is one profile and one save, player 1's: whoever signs in, a second
-// player included, becomes that profile and reads player 1's save.
+// There is one profile and one save, player 1's: playing alone, whoever
+// signs in becomes that profile and reads player 1's save. With two players
+// ([83E515FB], the two-player menus) the second stays a guest; any save the
+// title opens is player 1's anyway (the content calls' owner).
 void sfr::nui_sign_in_player1() {
     if(!sfr::profile_for(0)) return;
+    if(sfr::active_memory && sfr::active_memory->load<uint8_t>(0x83E515FB)) {
+        std::cerr << "NUI_SIGNIN_PLAYER1 signed_in=0 two_players=1\n";
+        return;
+    }
     uint32_t signed_in=0;
     {
         std::lock_guard guard(kinect_identity_lock);
         for(auto& [tracking_id,enrollment] : kinect_identities)
             if(enrollment!=0) { enrollment=0; ++signed_in; }
     }
-    skeleton.sign_in(0);
-    second_skeleton.sign_in(0);
+    (player_routing.reversed() ? second_skeleton : skeleton).sign_in(0);
     std::cerr << "NUI_SIGNIN_PLAYER1 signed_in=" << signed_in << '\n';
 }
 
