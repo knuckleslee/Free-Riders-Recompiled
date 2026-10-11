@@ -11,4 +11,10 @@ namespace sfr {
 enum class KinectTuner { opened, already_open, unavailable };
 KinectTuner open_kinect_tuner();
 bool kinect_tuner_open();
+
+// The adjustment window as the system's Kinect Guide overlay: opened, then
+// XN_SYS_UI 1 told to the title until the window closes (0), the controls
+// held meanwhile, as the console's overlay took them (diagnostic_main.cpp).
+// `why` names the asker in the log.
+KinectTuner show_system_guide(const char* why);
 }

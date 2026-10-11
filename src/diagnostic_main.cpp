@@ -297,6 +297,30 @@ static thread_local bool sampler_inline_mip_pending = false;
 static NativeWinsock* native_winsock = nullptr;
 static NativeNotifications* native_notifications = nullptr;
 static NotificationPlacement* notification_placement = nullptr;
+
+namespace sfr {
+KinectTuner show_system_guide(const char* why) {
+    const KinectTuner tuner = open_kinect_tuner();
+    if (tuner != KinectTuner::opened) return tuner;
+    const auto race_flag = [] {
+        return active_memory && active_memory->readable(0x83E52F8C, 4) ? active_memory->load<uint32_t>(0x83E52F8C) : 0u;
+    };
+    std::cerr << "NUI_SYSTEM_GUIDE open by=" << why << " racing=" << (race_flag() != 0) << '\n';
+    if (!native_notifications) return tuner;
+    constexpr uint32_t xn_sys_ui = 0x00000009;
+    native_notifications->publish(xn_sys_ui, 1);
+    static std::jthread watch;
+    if (watch.joinable()) watch.join();  // the previous window's: it has closed
+    watch = std::jthread([race_flag](std::stop_token stop) {
+        while (!stop.stop_requested() && kinect_tuner_open())
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        set_input_held(false);
+        if (native_notifications) native_notifications->publish_when_drained(xn_sys_ui, 0);
+        std::cerr << "NUI_KINECT_TUNER closed\nNUI_SYSTEM_GUIDE closed racing=" << (race_flag() != 0) << '\n';
+    });
+    return tuner;
+}
+}
 static AssetFiles* asset_files = nullptr;
 static GuestFiles* guest_files = nullptr;
 static ContentFiles* content_files = nullptr;  // saves: mounted content packages
@@ -1753,23 +1777,10 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
         // troubleshooter or Kinect Guide, with the webcam the webcam's
         // adjustment window (kinect_tuner.h). The system UI is shown
         // (XN_SYS_UI 1) until the window closes, then hidden.
-        const sfr::KinectTuner tuner = sfr::open_kinect_tuner();
+        const sfr::KinectTuner tuner = sfr::show_system_guide(name + 7);
         if (tuner != sfr::KinectTuner::unavailable) {
             std::cerr << "NUI_SYSTEM_UI " << std::string_view(name).substr(7) << " lr=0x" << std::hex << ctx.lr << std::dec
                       << " result=0 backend=adjustment-window" << (tuner == sfr::KinectTuner::already_open ? " already-open" : "") << '\n';
-            if (tuner == sfr::KinectTuner::opened && native_notifications) {
-                constexpr uint32_t xn_sys_ui = 0x00000009;
-                native_notifications->publish(xn_sys_ui, 1);
-                static std::jthread watch;
-                if (watch.joinable()) watch.join();  // the previous window's: it has closed
-                watch = std::jthread([](std::stop_token stop) {
-                    while (!stop.stop_requested() && sfr::kinect_tuner_open())
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    sfr::set_input_held(false);
-                    if (native_notifications) native_notifications->publish_when_drained(xn_sys_ui, 0);
-                    std::cerr << "NUI_KINECT_TUNER closed\n";
-                });
-            }
             ctx.r3.u64 = 0;
             return;
         }

@@ -64,7 +64,7 @@ launcher「體感與攝影機」分頁的「攝影機」（`SFR_CAMERA`）有三
    姿勢模型每秒判讀幾張與每張平均耗時、繪圖後端與渲染倍率。
    設為 0 後按 F8 打開時用預設的 8 公釐。
    webcam 的骨架也會判斷暫停手勢（Pause Gesture：右手垂下、左手斜下 45 度舉著，暫停比賽），見
-   [Kinect 說明](kinect-sensor.md)的「Pause Gesture／暫停手勢」。
+   [Kinect 說明](kinect-sensor.md)的「Kinect Guide 手勢」與「Pause Gesture／暫停手勢」（測試中：預設在任何地方打開 webcam 調整視窗當作系統 overlay）。
 7. [`camera_player`](../src/camera_player.h)：上面幾步跑在自己的執行緒上，
    遊戲那格要骨架時只拿最新一份，並取得最後有效姿勢的時間。
    [`nui_hooks`](../src/nui_hooks.cpp) 的 `sub_827707B0` 依姿勢新鮮度與手把操作
