@@ -10,7 +10,11 @@ std::atomic<int64_t> last_frame{0};        // clock ticks of the last present
 std::atomic<int64_t> worst_frame_us{0};
 std::atomic<uint32_t> kinect_frames{0}, pose_estimates{0};
 std::atomic<int64_t> pose_us{0};
+std::atomic<void*> window{nullptr};
 }
+
+void set_game_window(void* made) { window.store(made, std::memory_order_relaxed); }
+void* game_window() { return window.load(std::memory_order_relaxed); }
 
 void note_frame_presented() {
     const int64_t now = clock::now().time_since_epoch().count();

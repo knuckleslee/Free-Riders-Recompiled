@@ -123,8 +123,13 @@ void title_worker() {
                     title += chinese ? (on ? L"  [游標穩定：開 F8]" : L"  [游標穩定：關 F8]")
                                      : (on ? L"  [Steady: on F8]" : L"  [Steady: off F8]");
                 }
-                SendMessageTimeoutW(window, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(title.c_str()),
-                                    SMTO_ABORTIFHUNG | SMTO_BLOCK, 250, &result);
+                const bool set = SendMessageTimeoutW(window, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(title.c_str()),
+                                                     SMTO_ABORTIFHUNG | SMTO_BLOCK, 250, &result) != 0;
+                static bool told = false;
+                if (set && !told) {
+                    told = true;
+                    std::cerr << "NATIVE_WINDOW_TITLE stats=1\n";
+                }
             }
         }
         guard.lock();
@@ -140,29 +145,35 @@ void show(HWND window) {
     title_wake.notify_one();
 }
 
-HWND game_window = nullptr;
+HWND found_window = nullptr;
 bool held = false;
+HWND shown_on = nullptr;
 }
 
 void poll_menu_steady_hotkey() {
-    // Only the game's own window, in front: F8 elsewhere is somebody else's.
+    // The title goes on the game's window, as the presentation made it; else
+    // the first window of ours found in front (the adjustment windows are
+    // this process's too).
+    HWND game = static_cast<HWND>(game_window());
     HWND window = GetForegroundWindow();
     DWORD process = 0;
-    if (!window || !GetWindowThreadProcessId(window, &process) || process != GetCurrentProcessId()) {
+    const bool ours = window && GetWindowThreadProcessId(window, &process) && process == GetCurrentProcessId();
+    if (!game && ours && !found_window) found_window = window;
+    if (!game) game = found_window;
+    if (game && game != shown_on) {
+        shown_on = game;
+        show(game);
+    }
+    // Only the game's own window, in front: F8 elsewhere is somebody else's.
+    if (!ours) {
         held = false;
         return;
-    }
-    // The adjustment windows are this process's too; the title goes on the
-    // game's, the first window of ours found in front.
-    if (!game_window) {
-        game_window = window;
-        show(game_window);
     }
     const bool down = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
     if (down && !held) {
         set_menu_steadying(!menu_steadying());
         std::cerr << "NUI_MENU_STEADY on=" << menu_steadying() << '\n';
-        show(IsWindow(game_window) ? game_window : window);
+        if (game && IsWindow(game)) show(game);
     }
     held = down;
 }
