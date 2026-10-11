@@ -21,6 +21,8 @@
 遊戲以 `XamContentCreateEx` 建立存檔內容並掛成 `sav:`，再用一般的檔案呼叫讀寫
 `sav:\SfrAllData.sav`（約 23 MB；另有 `SrnData.sav`、`SrnGhostData.sav` 兩個名稱）。
 
+- 存檔只有一份，是玩家 1 的：遊戲不論替哪個使用者（包括訪客）開存檔，都用玩家 1 帳號的 XUID，
+  所以不會因為被當成訪客或換了使用者編號而讀到空的存檔。
 - 只有一個儲存裝置（硬碟，id 1）：`XamShowNuiDeviceSelectorUI` 直接選它，
   `XamContentGetDeviceData`／`GetDeviceState` 回報它。
 - 內容放在 `save/<XUID>/<內容類型>/<檔名>/`（`SFR_SAVE_DIRECTORY` 可改；Android 在 app 的

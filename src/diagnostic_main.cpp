@@ -2822,10 +2822,13 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
         // directory, owned by the local profile. The overlapped forms complete
         // at once.
         const std::string_view call(name);
+        // There is one save, player 1's: whichever user the title asks for,
+        // a guest included, the content is player 1's profile's.
         const auto owner = [](uint32_t user) -> std::optional<uint64_t> {
             if (user == 0xFF || user == 0xFE) return 0;  // XUSER_INDEX_ANY / NONE: device content
             if (user >= 4) return std::nullopt;
             const LocalProfile* profile = profile_for(user);
+            if (!profile) profile = profile_for(0);
             return profile ? std::optional<uint64_t>(profile->xuid) : std::nullopt;
         };
         const auto finish = [&](uint32_t result, uint32_t overlapped) {
