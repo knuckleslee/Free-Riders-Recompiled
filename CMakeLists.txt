@@ -384,11 +384,16 @@ add_test(NAME pose_smoothing COMMAND sfr_pose_smoothing_test)
 add_executable(sfr_pose_stability_test tests/pose_stability_test.cpp src/pose_stability.cpp)
 target_include_directories(sfr_pose_stability_test PRIVATE src)
 add_test(NAME pose_stability COMMAND sfr_pose_stability_test)
-add_executable(sfr_kinect_stability_test tests/kinect_stability_test.cpp src/kinect_stability.cpp src/pose_stability.cpp)
+add_executable(sfr_kinect_stability_test tests/kinect_stability_test.cpp src/kinect_stability.cpp src/pose_stability.cpp
+    src/kinect_depth_layer.cpp src/kinect_preview.cpp)
 target_include_directories(sfr_kinect_stability_test PRIVATE src)
 add_test(NAME kinect_stability COMMAND sfr_kinect_stability_test)
+add_executable(sfr_kinect_depth_layer_test tests/kinect_depth_layer_test.cpp src/kinect_depth_layer.cpp src/kinect_preview.cpp)
+target_include_directories(sfr_kinect_depth_layer_test PRIVATE src)
+add_test(NAME kinect_depth_layer COMMAND sfr_kinect_depth_layer_test)
 # The two side by side over a scripted player (scripts/render_kinect_steady_demo.py draws it).
-add_executable(sfr_kinect_steady_demo tests/kinect_steady_demo.cpp src/kinect_stability.cpp src/pose_stability.cpp)
+add_executable(sfr_kinect_steady_demo tests/kinect_steady_demo.cpp src/kinect_stability.cpp src/pose_stability.cpp
+    src/kinect_depth_layer.cpp src/kinect_preview.cpp)
 target_include_directories(sfr_kinect_steady_demo PRIVATE src)
 add_executable(sfr_camera_tuner_test tests/camera_tuner_test.cpp src/camera_tuner.cpp)
 target_include_directories(sfr_camera_tuner_test PRIVATE src)
@@ -941,7 +946,7 @@ if(SFR_BUILD_DIAGNOSTIC)
     target_sources(sfr_cpu_diagnostic PRIVATE src/offline_presence_hooks.cpp)
     # The webcam standing in for the sensor, and the body it finds.
     target_sources(sfr_cpu_diagnostic PRIVATE src/camera_player.cpp src/camera_debug.cpp src/camera_debug_window.cpp src/pose_skeleton.cpp src/pose_smoothing.cpp src/pose_stability.cpp src/kinect_stability.cpp
-                   src/camera_tuner.cpp src/camera_tuner_window.cpp
+                   src/kinect_depth_layer.cpp src/camera_tuner.cpp src/camera_tuner_window.cpp
                    ${SFR_CAMERA_CAPTURE} ${SFR_POSE_SOURCES})
     # A real Kinect (SFR_CAMERA=kinect), through the Kinect for Windows runtime.
     target_sources(sfr_cpu_diagnostic PRIVATE src/kinect_sensor.cpp ${SFR_KINECT_SENSOR} ${SFR_VOICE}

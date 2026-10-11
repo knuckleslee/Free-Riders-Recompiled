@@ -4,6 +4,8 @@ as the sensor gave it (left, steadying off) and as the game is given it
 (right, on), with the menu cursor's trail in the menu scenes. Writes a GIF.
 
 usage: kinect_steady_demo | python scripts/render_kinect_steady_demo.py OUT.gif
+       kinect_steady_demo --depth | python scripts/render_kinect_steady_demo.py OUT.gif
+(--depth: the right side also checks the limbs against a depth image.)
 """
 import json
 import sys
@@ -49,7 +51,8 @@ def main():
         d = ImageDraw.Draw(im)
         d.text((20, 14), SCENES.get(f['scene'], f['scene']), font=big, fill=FG)
         d.text((W - 230, 18), '示意模擬（同一段資料）', font=small, fill=DIM)
-        for side, (key, title, colour) in enumerate([('given', '關：Kinect 原樣', OFF), ('out', '開：遮擋保持＋游標穩定', ON)]):
+        on_title = '開：遮擋保持＋深度分層＋游標穩定' if f.get('depth') else '開：遮擋保持＋游標穩定'
+        for side, (key, title, colour) in enumerate([('given', '關：Kinect 原樣', OFF), ('out', on_title, ON)]):
             left = 20 + side * (PANEL + 20)
             top = 56
             d.rectangle([left, top, left + PANEL, top + H - 76], outline=(45, 54, 70), width=2)

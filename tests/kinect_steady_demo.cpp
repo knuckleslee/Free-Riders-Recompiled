@@ -5,10 +5,16 @@
 // wandering a few millimetres with an odd wrong frame). Prints one JSON line
 // a frame: the scene, whether a menu is up, and every joint as given and as
 // steadied, for scripts/render_kinect_steady_demo.py to draw side by side.
+// With --depth the steadying is also handed a depth image drawn from the
+// body as it really stands (the arm where it is, not where the sensor
+// guesses it), so the depth check (kinect_depth_layer.h) takes part.
 #include "kinect_stability.h"
+#include "kinect_depth_scene.h"
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <optional>
 #include <random>
 #include <string>
 
@@ -59,8 +65,9 @@ void place_arm(sfr::KinectBody& b, bool right, float ex, float ey, float ez, flo
     b.joints[h] = {wx + (wx - ex) * 0.27f, wy + (wy - ey) * 0.27f, wz + (wz - ez) * 0.27f};
 }
 
-void print(const char* scene, bool menu, int frame, const sfr::KinectBody& given, const sfr::KinectBody& out) {
-    std::printf("{\"frame\":%d,\"scene\":\"%s\",\"menu\":%d,\"given\":[", frame, scene, menu ? 1 : 0);
+void print(const char* scene, bool menu, bool depth, int frame, const sfr::KinectBody& given, const sfr::KinectBody& out) {
+    std::printf("{\"frame\":%d,\"scene\":\"%s\",\"menu\":%d,\"depth\":%d,\"given\":[", frame, scene, menu ? 1 : 0,
+                depth ? 1 : 0);
     for (uint32_t j = 0; j < sfr::nui_joint_count; ++j)
         std::printf("%s[%.4f,%.4f,%.4f,%u]", j ? "," : "", given.joints[j][0], given.joints[j][1], given.joints[j][2],
                     given.joint_states[j]);
@@ -71,7 +78,8 @@ void print(const char* scene, bool menu, int frame, const sfr::KinectBody& given
 }
 }
 
-int main() {
+int main(int argc, char** argv) {
+    const bool with_depth = argc > 1 && std::strcmp(argv[1], "--depth") == 0;
     std::mt19937 random(7);
     std::normal_distribution<float> tremble(0.0f, 0.0025f);  // a still hand, metres
     std::uniform_real_distribution<float> unit(0.0f, 1.0f);
@@ -82,6 +90,7 @@ int main() {
         for (int i = 0; i < frames; ++i, ++frame) {
             const float t = float(i) / float(frames);
             sfr::KinectBody b = standing();
+            std::optional<sfr::KinectBody> real;  // the body as it stands, before the sensor's guesses
             const std::string name = scene.name;
             if (name.rfind("arms crossed", 0) == 0) {
                 // The arms fold across the chest and open again; while crossed
@@ -91,6 +100,7 @@ int main() {
                           -0.21f + 0.36f * fold, -0.03f + 0.36f * fold, 2.4f - 0.3f * fold);
                 place_arm(b, true, 0.2f - 0.08f * fold, 0.22f + 0.05f * fold, 2.4f - 0.12f * fold,
                           0.21f - 0.36f * fold, -0.03f + 0.32f * fold, 2.4f - 0.25f * fold);
+                real = b;
                 if (fold > 0.6f) {
                     for (uint32_t j : {joint::wrist_right, joint::hand_right}) b.joint_states[j] = 1;
                     const float r = unit(random);
@@ -108,6 +118,7 @@ int main() {
                 // anywhere around the hip, often in front of the body.
                 const float back = std::fmin(1.0f, std::fmax(0.0f, std::sin(t * 3.14159f) * 1.5f));
                 place_arm(b, true, 0.22f, 0.24f, 2.4f + 0.1f * back, 0.22f - 0.1f * back, 0.0f, 2.4f + 0.2f * back);
+                real = b;
                 if (back > 0.5f) {
                     for (uint32_t j : {joint::wrist_right, joint::hand_right}) b.joint_states[j] = 1;
                     if (unit(random) < 0.5f) {
@@ -137,8 +148,14 @@ int main() {
             }
             sfr::KinectBody out = b;
             std::vector<sfr::KinectBody> bodies{out};
-            steadying.steady(bodies, 1.0 / rate, scene.menu);
-            print(scene.name, scene.menu, frame, b, bodies[0]);
+            if (with_depth) {
+                sfr_test::DepthScene depth;
+                depth.body(real ? *real : b);
+                steadying.steady(bodies, 1.0 / rate, scene.menu, &depth.image);
+            } else {
+                steadying.steady(bodies, 1.0 / rate, scene.menu);
+            }
+            print(scene.name, scene.menu, with_depth, frame, b, bodies[0]);
         }
     }
     return 0;
