@@ -1495,19 +1495,6 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
     } in_import;
     note_activity(name, address);
     guest_checkpoint();
-    {
-        // The system calls about users, content and storage, the first 600
-        // of them whatever the trace setting: what the title asks before it
-        // decides there is no save (NATIVE_XAM).
-        const std::string_view called(name);
-        static std::atomic<uint32_t> told{0};
-        if ((called.rfind("__imp__XamUser", 0) == 0 || called.rfind("__imp__XamContent", 0) == 0 ||
-             called.rfind("__imp__XamShowNui", 0) == 0 || called.rfind("__imp__XamEnumerate", 0) == 0 ||
-             called.rfind("__imp__XamProfile", 0) == 0 || called.rfind("__imp__XContent", 0) == 0) &&
-            told.fetch_add(1, std::memory_order_relaxed) < 600)
-            std::cerr << "NATIVE_XAM " << called.substr(7) << " r3=0x" << std::hex << ctx.r3.u32 << " r4=0x" << ctx.r4.u32
-                      << " r5=0x" << ctx.r5.u32 << " r6=0x" << ctx.r6.u32 << " lr=0x" << ctx.lr << std::dec << '\n';
-    }
     static const bool thread_wait_trace = [] {
         const char* text = std::getenv("SFR_THREAD_WAIT_TRACE");
         return text && *text == '1';
@@ -2844,13 +2831,10 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
         // directory, owned by the local profile. The overlapped forms complete
         // at once.
         const std::string_view call(name);
-        // There is one save, player 1's: whichever user the title asks for,
-        // a guest included, the content is player 1's profile's.
         const auto owner = [](uint32_t user) -> std::optional<uint64_t> {
             if (user == 0xFF || user == 0xFE) return 0;  // XUSER_INDEX_ANY / NONE: device content
             if (user >= 4) return std::nullopt;
             const LocalProfile* profile = profile_for(user);
-            if (!profile) profile = profile_for(0);
             return profile ? std::optional<uint64_t>(profile->xuid) : std::nullopt;
         };
         const auto finish = [&](uint32_t result, uint32_t overlapped) {
