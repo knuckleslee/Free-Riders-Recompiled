@@ -861,6 +861,13 @@ std::optional<GamepadState> nui_pad(uint32_t user) {
     return user == 0 ? input().current(0) : input().controller(user);
 }
 
+uint16_t nui_pad_buttons_through_hold() {
+    uint16_t buttons = 0;
+    for (uint32_t user = 0; user < 4; ++user)
+        if (const auto pad = input().pad_through_hold(user)) buttons |= pad->buttons;
+    return buttons;
+}
+
 GamepadState nui_gamepad() {
     const uint32_t user = relay_pad();
     return (user ? input().controller(user) : input().current(0)).value_or(GamepadState{});

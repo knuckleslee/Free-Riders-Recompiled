@@ -199,6 +199,13 @@ std::optional<GamepadState> NativeInput::controller(uint32_t user) const {
     return state;
 }
 
+std::optional<GamepadState> NativeInput::pad_through_hold(uint32_t user) const {
+    if (user >= players_.size() || !uses_pad(players_[user].device)) return std::nullopt;
+    std::optional<GamepadState> state = pad_(user);
+    if (state && players_[user].pad) state = remap_pad(*players_[user].pad, *state);
+    return state;
+}
+
 uint32_t NativeInput::get_state(GuestMemory& memory, uint32_t user, uint32_t output) {
     if (user > 3) throw RuntimeStop("native-input", user, "unsupported XamInputGetState user index");
     const std::optional<GamepadState> state = current(user);

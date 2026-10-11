@@ -11,6 +11,8 @@ namespace sfr {
 enum class KinectTuner { opened, already_open, unavailable };
 KinectTuner open_kinect_tuner();
 bool kinect_tuner_open();
+// Closes it (a pad's Back), the game's window in front again.
+void close_kinect_tuner();
 
 // The adjustment window as the system's Kinect Guide overlay: opened, then
 // XN_SYS_UI 1 told to the title until the window closes (0), the controls

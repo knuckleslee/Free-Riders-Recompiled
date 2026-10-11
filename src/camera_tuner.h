@@ -51,6 +51,8 @@ public:
     static std::unique_ptr<CameraTunerWindow> open_over(CameraPlayer& player);
     ~CameraTunerWindow();
     bool closed() const;
+    // Closes it as its close box does (the game's window in front again).
+    void close();
     struct Impl;
 private:
     explicit CameraTunerWindow(std::unique_ptr<Impl> impl);

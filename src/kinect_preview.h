@@ -27,6 +27,8 @@ public:
     void show_frame(const KinectFrame& frame);
     ~KinectPreviewWindow();
     bool closed() const;
+    // Closes it as its close box does (the game's window in front again).
+    void close();
     // The open sensor, or null while it is opening or when there is none.
     std::shared_ptr<KinectSensor> sensor() const;
     // Why no sensor opened (KinectSensor::open's reason, "no-runtime",

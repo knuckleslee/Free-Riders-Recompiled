@@ -73,6 +73,9 @@ public:
     // User 0's current() is always connected, which says nothing about whether
     // anybody is there.
     std::optional<GamepadState> controller(uint32_t user) const;
+    // A host pad's own buttons with its bindings, whether or not the input is
+    // held: the adjustment window closes on Back while the game reads none.
+    std::optional<GamepadState> pad_through_hold(uint32_t user) const;
     // XamInputSetState: forward rumble motor speeds to a host pad when present.
     // User 0 is always connected (keyboard-backed), so it always succeeds.
     uint32_t set_vibration(uint32_t user, uint16_t left_motor, uint16_t right_motor);

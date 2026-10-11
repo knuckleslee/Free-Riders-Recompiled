@@ -176,6 +176,14 @@ KinectTuner open_kinect_tuner() {
     if(opened) sfr::set_input_held(true);
     return opened ? KinectTuner::opened : KinectTuner::unavailable;
 }
+// Back (Select) on a pad closes an open adjustment window, as Esc does,
+// and the game's window is in front again.
+void close_kinect_tuner() {
+    std::lock_guard guard(tuner_lock);
+    if(tuner) tuner->close();
+    if(camera_tuner) camera_tuner->close();
+    std::cerr << "NUI_KINECT_TUNER close=pad-back\n";
+}
 bool kinect_tuner_open() {
     std::lock_guard guard(tuner_lock);
     return (tuner && !tuner->closed()) || (camera_tuner && !camera_tuner->closed());
@@ -513,6 +521,17 @@ void write_kinect_body(sfr::GuestMemory& memory, uint32_t frame, const sfr::Kine
 SFR_INPUT_HOOK(sub_827707B0) {
     sfr::enter_function(ctx,"sub_827707B0",0x827707B0);
     sfr::poll_window_title();  // the frame rate in the window title
+    {
+        // Back on any pad closes the adjustment window (the game reads the
+        // pads as at rest meanwhile); a press already down when it opened
+        // does not count.
+        static bool was_open=false, was_back=false;
+        const bool open=sfr::kinect_tuner_open();
+        const bool back=open && (sfr::nui_pad_buttons_through_hold() & sfr::gamepad_button::back);
+        if(open && was_open && back && !was_back) sfr::close_kinect_tuner();
+        was_open=open;
+        was_back=back;
+    }
     const uint32_t frame=ctx.r4.u32;
     if(!frame) { ctx.r3.u64=0x80004003u; return; }  // E_POINTER, as the original
     // [83E52F8C] is the race flag: the hands leave the menu cursor pose.

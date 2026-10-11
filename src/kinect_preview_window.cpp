@@ -64,6 +64,7 @@ struct KinectPreviewWindow::Impl {
     std::shared_ptr<KinectSensor> sensor;  // under lock
     std::string failure;                   // why no sensor opened
     std::atomic<bool> is_closed{false};
+    std::atomic<HWND> shown{nullptr};  // for close()
     std::stop_token stopping;
     KinectFrame frame;
     KinectImage colour, depth;
@@ -389,6 +390,7 @@ struct KinectPreviewWindow::Impl {
                                       WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1360, 640, nullptr, nullptr,
                                       instance, this);
         if (!window) { is_closed.store(true); return; }
+        shown.store(window);
         up_button = CreateWindowExW(0, L"BUTTON", chinese ? L"往上" : L"Up", WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_PUSHBUTTON,
                                     0, 0, 0, 0, window, reinterpret_cast<HMENU>(INT_PTR(up_id)), instance, nullptr);
         down_button = CreateWindowExW(0, L"BUTTON", chinese ? L"往下" : L"Down", WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_PUSHBUTTON,
@@ -471,6 +473,9 @@ void KinectPreviewWindow::show_frame(const KinectFrame& frame) {
 }
 
 bool KinectPreviewWindow::closed() const { return impl_->is_closed.load(); }
+void KinectPreviewWindow::close() {
+    if (const HWND window = impl_->shown.load(); window && !closed()) PostMessageW(window, WM_CLOSE, 0, 0);
+}
 
 std::shared_ptr<KinectSensor> KinectPreviewWindow::sensor() const {
     std::lock_guard guard(impl_->lock);
@@ -491,6 +496,7 @@ std::unique_ptr<KinectPreviewWindow> KinectPreviewWindow::open(bool) { return nu
 std::unique_ptr<KinectPreviewWindow> KinectPreviewWindow::open_over(KinectSensor&) { return nullptr; }
 void KinectPreviewWindow::show_frame(const KinectFrame&) {}
 bool KinectPreviewWindow::closed() const { return true; }
+void KinectPreviewWindow::close() {}
 std::shared_ptr<KinectSensor> KinectPreviewWindow::sensor() const { return nullptr; }
 std::string KinectPreviewWindow::failure() const { return {}; }
 }

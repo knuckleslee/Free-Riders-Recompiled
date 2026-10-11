@@ -48,6 +48,7 @@ struct CameraTunerWindow::Impl {
     CameraPlayer* player = nullptr;  // the game's, borrowed
     bool chinese = false;
     std::atomic<bool> is_closed{false};
+    std::atomic<HWND> shown{nullptr};  // for close()
     std::stop_token stopping;
     CameraView view;
     std::chrono::steady_clock::time_point opened_at{}, last_picture{};
@@ -374,6 +375,7 @@ struct CameraTunerWindow::Impl {
                                      chinese ? L"Free Riders - Webcam 調整" : L"Free Riders - Webcam adjustment",
                                      WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 900, 780, nullptr, nullptr,
                                      instance, this);
+        if (window) shown.store(window);
         if (window && SetTimer(window, 1, 33, nullptr)) {
             create_controls(window, instance);
             place_controls(window);
@@ -416,6 +418,9 @@ std::unique_ptr<CameraTunerWindow> CameraTunerWindow::open_over(CameraPlayer& pl
 }
 
 bool CameraTunerWindow::closed() const { return impl_->is_closed.load(); }
+void CameraTunerWindow::close() {
+    if (const HWND window = impl_->shown.load(); window && !closed()) PostMessageW(window, WM_CLOSE, 0, 0);
+}
 }
 #else
 namespace sfr {
@@ -424,5 +429,6 @@ CameraTunerWindow::CameraTunerWindow(std::unique_ptr<Impl> impl) : impl_(std::mo
 CameraTunerWindow::~CameraTunerWindow() = default;
 std::unique_ptr<CameraTunerWindow> CameraTunerWindow::open_over(CameraPlayer&) { return nullptr; }
 bool CameraTunerWindow::closed() const { return true; }
+void CameraTunerWindow::close() {}
 }
 #endif
