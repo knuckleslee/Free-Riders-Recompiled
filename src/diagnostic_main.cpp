@@ -300,6 +300,8 @@ static NotificationPlacement* notification_placement = nullptr;
 
 KinectTuner show_system_guide(const char* why) {
     const KinectTuner tuner = open_kinect_tuner();
+    if (tuner == KinectTuner::unavailable)
+        std::cerr << "NUI_KINECT_TUNER skipped by=" << why << " reason=no-window (no Kinect or webcam player, or it failed)\n";
     if (tuner != KinectTuner::opened) return tuner;
     const auto race_flag = [] {
         return active_memory && active_memory->readable(0x83E52F8C, 4) ? active_memory->load<uint32_t>(0x83E52F8C) : 0u;
@@ -1783,6 +1785,14 @@ static void dispatch_import_owned(PPCContext& ctx, const char* name, uint32_t ad
     }
     // In a race ([83E52F8C], the title's race flag) the Kinect Guide the
     // pause menu opens stays as it was: shown and closed at once, no window.
+    if (((address == 0x82ACBE5C && std::string_view(name) == "__imp__XamShowNuiTroubleshooterUI") ||
+         std::string_view(name) == "__imp__XamShowNuiGuideUI") &&
+        active_memory && active_memory->readable(0x83E52F8C, 4) && active_memory->load<uint32_t>(0x83E52F8C) != 0) {
+        static uint32_t told = 0;
+        if (told++ < 32)
+            std::cerr << "NUI_KINECT_TUNER skipped by=" << std::string_view(name).substr(7) << " reason=racing race_flag=0x"
+                      << std::hex << active_memory->load<uint32_t>(0x83E52F8C) << " lr=0x" << ctx.lr << std::dec << '\n';
+    }
     if (((address == 0x82ACBE5C && std::string_view(name) == "__imp__XamShowNuiTroubleshooterUI") ||
          std::string_view(name) == "__imp__XamShowNuiGuideUI") &&
         !(active_memory && active_memory->readable(0x83E52F8C, 4) && active_memory->load<uint32_t>(0x83E52F8C) != 0)) {
