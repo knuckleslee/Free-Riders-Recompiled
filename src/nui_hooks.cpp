@@ -890,24 +890,19 @@ SFR_INPUT_HOOK(sub_82764620) {
     bool profile=false;
     if(kinect) {
         // The sensor's own ids. Playing alone ([83E515FB] clear: no
-        // two-player menus), whoever the title identifies is joining as the
-        // player, so the signed-in profile goes to them, and anyone who held
-        // it before (someone who walked past first, a skeleton the sensor
-        // saw in a chair) becomes a guest: the player never starts as one.
-        // With two players the profile stays with whoever holds it while
-        // tracked, and the other is the guest.
+        // two-player menus) everyone the title identifies is player 1's
+        // profile: the title identifies every new skeleton, the player's own
+        // again after a moment out of view as well as a passer-by or a chair,
+        // and taking the profile from the one it already chose made that
+        // player a guest it asked to sign in, with no save. With two
+        // players the profile stays with whoever holds it while tracked, and
+        // the other is the guest.
         std::lock_guard guard(kinect_identity_lock);
         const bool two_players=memory.load<uint8_t>(0x83E515FB)!=0;
         const bool held=std::any_of(kinect_identities.begin(),kinect_identities.end(),[&](const auto& entry) {
             return entry.first!=tracking_id && entry.second==0;
         });
         profile=sfr::profile_for(0)!=nullptr && (!two_players || !held);
-        if(profile)
-            for(auto& [other,enrollment] : kinect_identities)
-                if(other!=tracking_id && enrollment==0) {
-                    enrollment=sfr::NuiSkeletonEmulation::guest;
-                    std::cerr << "NUI_IDENTITY_PROFILE_MOVED from=" << other << " to=" << tracking_id << '\n';
-                }
         kinect_identities[tracking_id]=profile?0u:sfr::NuiSkeletonEmulation::guest;
     } else {
         profile=tracking_id<=1 && sfr::profile_for(0)!=nullptr;
